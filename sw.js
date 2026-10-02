@@ -1,7 +1,8 @@
 // LiftSync service worker — bump VERSION on every deploy so phones pick up the update
-const VERSION = "liftsync-1.0.0";
+const VERSION = "liftsync-1.0.1";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest",
-  "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png", "./icons/favicon-32.png"];
+  "./icons/rounded/icon-32.png", "./icons/rounded/icon-192.png", "./icons/rounded/icon-512.png",
+  "./icons/ios/icon-180.png", "./icons/maskable-192.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

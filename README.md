@@ -10,7 +10,10 @@
 | `index.html` | App 本體（介面與程式都在這裡） |
 | `manifest.webmanifest` | App 名稱、圖示、顏色，讓手機知道它可以安裝 |
 | `sw.js` | Service worker，負責離線快取 |
-| `icons/` | 各尺寸 App 圖示 |
+| `icons/rounded/` | 圓角圖示（favicon 與 Android 桌面圖示，16–1024px） |
+| `icons/ios/` | 方形圖示（iPhone／iPad 加入主畫面用，iOS 會自己切圓角，20–1024px） |
+| `icons/maskable-*.png` | Android 自適應圖示，圖案留了安全邊距不會被裁掉 |
+| `icons/LiftSync-icon-*.svg` | 圖示原始向量檔，要改圖或重新產生各尺寸時用 |
 
 > 注意：直接在電腦上雙擊 `index.html` 打開時，離線與安裝功能不會啟用。PWA 必須透過 **https 網址**開啟才有效，所以要先部署。
 
@@ -46,6 +49,6 @@
 ## 之後要更新 App
 
 1. 修改 `index.html`（或請 Claude 幫你改）。
-2. 打開 `sw.js`，把第二行 `VERSION` 的版本號加一，例如 `liftsync-1.0.0` → `liftsync-1.0.1`。**沒改版本號，手機可能一直顯示舊版。**
+2. 打開 `sw.js`，把第二行 `VERSION` 的版本號加一，例如 `liftsync-1.0.1` → `liftsync-1.0.2`。**沒改版本號，手機可能一直顯示舊版。**
 3. 把改過的檔案重新上傳到 GitHub（同檔名覆蓋）。
 4. 手機上把 App 完全關掉再打開，必要時開兩次，就會換成新版。
