@@ -1,4 +1,4 @@
-# 鐵片日誌 PWA
+# LiftSync（重訓節奏與數據同步）PWA
 
 重量訓練紀錄 App：課表範本、組間休息計時、器械動作庫、進度圖表、資料備份。
 這是 PWA（漸進式網頁 App），放上網站後，手機「加入主畫面」就能像 App 一樣使用，離線也能開。
@@ -17,10 +17,10 @@
 ## 部署到 GitHub Pages（免費）
 
 1. 註冊或登入 [GitHub](https://github.com)。
-2. 右上角「＋」→ **New repository**。名稱例如 `ironlog`，選 **Public**，按 **Create repository**。
+2. 右上角「＋」→ **New repository**。名稱例如 `liftsync`，選 **Public**，按 **Create repository**。
 3. 在新的 repository 頁面點 **uploading an existing file**，把這個資料夾裡的**所有檔案和 `icons` 資料夾**拖進去（不要拖外層的資料夾本身，`index.html` 必須在最上層）。按 **Commit changes**。
 4. 進入 **Settings → Pages**。Source 選 **Deploy from a branch**，Branch 選 `main`、資料夾選 `/ (root)`，按 **Save**。
-5. 等一到兩分鐘，重新整理該頁，上方會出現網址，例如 `https://你的帳號.github.io/ironlog/`。
+5. 等一到兩分鐘，重新整理該頁，上方會出現網址，例如 `https://你的帳號.github.io/liftsync/`。
 
 其他免費選擇：Netlify（[app.netlify.com/drop](https://app.netlify.com/drop) 直接拖整個資料夾）或 Cloudflare Pages，效果相同。
 
@@ -46,6 +46,6 @@
 ## 之後要更新 App
 
 1. 修改 `index.html`（或請 Claude 幫你改）。
-2. 打開 `sw.js`，把第二行 `VERSION` 的版本號加一，例如 `ironlog-1.0.0` → `ironlog-1.0.1`。**沒改版本號，手機可能一直顯示舊版。**
+2. 打開 `sw.js`，把第二行 `VERSION` 的版本號加一，例如 `liftsync-1.0.0` → `liftsync-1.0.1`。**沒改版本號，手機可能一直顯示舊版。**
 3. 把改過的檔案重新上傳到 GitHub（同檔名覆蓋）。
 4. 手機上把 App 完全關掉再打開，必要時開兩次，就會換成新版。

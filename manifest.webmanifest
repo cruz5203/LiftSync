@@ -1,7 +1,7 @@
 {
-  "name": "鐵片日誌",
-  "short_name": "鐵片日誌",
-  "description": "記錄重量訓練、課表範本、組間休息與進度統計。",
+  "name": "LiftSync 重訓節奏與數據同步",
+  "short_name": "LiftSync",
+  "description": "重訓節奏與數據同步：課表範本、組間休息計時、進度統計與備份。",
   "lang": "zh-TW",
   "start_url": "./",
   "scope": "./",

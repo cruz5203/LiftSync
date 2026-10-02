@@ -1,5 +1,5 @@
-// 鐵片日誌 service worker — bump VERSION on every deploy so phones pick up the update
-const VERSION = "ironlog-1.0.0";
+// LiftSync service worker — bump VERSION on every deploy so phones pick up the update
+const VERSION = "liftsync-1.0.0";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png", "./icons/favicon-32.png"];
 

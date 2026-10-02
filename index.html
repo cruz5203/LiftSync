@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>鐵片日誌</title>
-<meta name="description" content="記錄重量訓練、課表範本、組間休息與進度統計。">
+<title>LiftSync</title>
+<meta name="description" content="LiftSync — 重訓節奏與數據同步：課表範本、組間休息計時、進度統計與備份。">
 <meta name="theme-color" content="#16201d">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="鐵片日誌">
+<meta name="apple-mobile-web-app-title" content="LiftSync">
 <style>
 :root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{margin:0;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
@@ -161,7 +161,7 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
 
 <div class="app">
   <header class="top">
-    <h1>鐵片日誌<small id="today-label"></small></h1>
+    <h1>LiftSync<small id="today-label"></small></h1>
     <span class="sample" id="sample-badge" hidden>範例資料 <button id="clear-sample" type="button">清除</button></span>
   </header>
   <div class="confirm" id="clear-confirm" hidden>
@@ -333,7 +333,8 @@ const LIB=`腿|器械|腿推機,腿伸展機,坐姿腿彎舉機,俯臥腿彎舉�
 核心|自體重|懸垂抬腿,棒式,捲腹
 核心|壺鈴|壺鈴擺盪`;
 const BASE=LIB.split("\n").flatMap(l=>{const[g,eq,ns]=l.split("|");return ns.split(",").map(name=>({name,g,eq}))});
-const KEY="ironlog-v1";
+const KEY="liftsync-v1";
+const OLD_KEY="ironlog-v1"; // pre-rename storage, read once so existing data survives
 const allEx=()=>[...BASE,...(S.custom||[])];
 const G=n=>(allEx().find(e=>e.name===n)||{g:"其他"}).g;
 const pad=n=>String(n).padStart(2,"0");
@@ -380,7 +381,7 @@ function defaultRoutines(){
   ];
 }
 let S;
-try{S=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){S=null}
+try{S=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY)||"null")}catch(e){S=null}
 if(S&&S.sample&&(S.ver||0)<3)S=null; // refresh old sample data
 if(!S||!Array.isArray(S.workouts))S=seed();
 S.custom=S.custom||[];S.routines=S.routines||[];S.settings=Object.assign({rest:90,exRest:{}},S.settings||{});S.ver=3;
@@ -677,18 +678,18 @@ if(document.documentElement.dataset.build==="pwa"){
   $("backup").hidden=false;
   const showLast=()=>{$("backup-last").textContent=S.lastBackup?`上次匯出：${S.lastBackup}`:"還沒有匯出過備份。"};showLast();
   $("export").addEventListener("click",()=>{
-    const data=JSON.stringify({app:"ironlog",exported:new Date().toISOString(),data:{...S,draft:null}},null,1);
+    const data=JSON.stringify({app:"liftsync",exported:new Date().toISOString(),data:{...S,draft:null}},null,1);
     const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type:"application/json"}));
-    a.download=`鐵片日誌備份-${ymd(new Date())}.json`;document.body.append(a);a.click();a.remove();
+    a.download=`LiftSync備份-${ymd(new Date())}.json`;document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),4000);
     S.lastBackup=ymd(new Date());save();showLast();toast("已匯出備份檔，請存到雲端硬碟或傳給自己");
   });
   let pending=null;
   $("import-file").addEventListener("change",async e=>{
     const f=e.target.files[0];e.target.value="";if(!f)return;
-    try{const j=JSON.parse(await f.text());if(j.app!=="ironlog"||!j.data||!Array.isArray(j.data.workouts))throw 0;
+    try{const j=JSON.parse(await f.text());if((j.app!=="liftsync"&&j.app!=="ironlog")||!j.data||!Array.isArray(j.data.workouts))throw 0;
       pending=j.data;$("import-msg").textContent=`備份內有 ${j.data.workouts.length} 次訓練、${(j.data.routines||[]).length} 個範本。匯入會取代目前的資料。`;$("import-confirm").hidden=false;
-    }catch(_){toast("這不是鐵片日誌的備份檔，請選擇匯出時產生的 .json 檔")}
+    }catch(_){toast("這不是 LiftSync 的備份檔，請選擇匯出時產生的 .json 檔")}
   });
   $("import-no").addEventListener("click",()=>{pending=null;$("import-confirm").hidden=true});
   $("import-yes").addEventListener("click",()=>{S=pending;S.custom=S.custom||[];S.routines=S.routines||[];S.settings=Object.assign({rest:90,exRest:{}},S.settings||{});S.ver=3;S.sample=false;
@@ -703,7 +704,7 @@ $("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],
 
 function renderAll(){renderSummary();renderPicker();renderRestSettings();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
 renderAll();
-let t0="today";try{t0=localStorage.getItem(KEY+"-tab")||"today"}catch(e){}
+let t0="today";try{t0=localStorage.getItem(KEY+"-tab")||localStorage.getItem(OLD_KEY+"-tab")||"today"}catch(e){}
 show(["today","history","progress"].includes(t0)?t0:"today");
 </script>
 
@@ -712,6 +713,6 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 </script>
-<!-- 鐵片日誌 v1.0.0 -->
+<!-- LiftSync v1.0.0 -->
 </body>
 </html>
