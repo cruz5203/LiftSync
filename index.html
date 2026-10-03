@@ -109,6 +109,12 @@ section.tab{display:flex;flex-direction:column;gap:16px}
 .hlist{font-size:.85rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hvol{text-align:right;font-size:.85rem}
 .hvol .num{font-size:1rem;font-weight:600}
+button.hitem{grid-template-columns:56px 1fr auto 14px;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer}
+button.hitem:hover,button.hitem:focus-visible{border-color:var(--muted)}
+.hchev{color:var(--muted);font-size:1.1rem;line-height:1}
+.bwlist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.bwlist li{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:6px 10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;font-size:.9rem}
+.bwlist .mini{width:72px}
 /* charts */
 .chart{width:100%;height:auto;display:block}
 .chart text{fill:var(--muted);font-family:var(--mono);font-size:10px}
@@ -256,8 +262,29 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
 
   <!-- HISTORY -->
   <section class="tab" id="tab-history" hidden>
-    <h2>訓練紀錄</h2>
-    <div class="hist" id="hist"></div>
+    <div id="hist-head" style="display:flex;flex-direction:column;gap:14px">
+      <div class="row spread"><h2>訓練紀錄</h2><span class="hint">點任一筆可以修改或刪除</span></div>
+      <div class="hist" id="hist"></div>
+    </div>
+
+    <div id="w-edit" hidden style="display:flex;flex-direction:column;gap:14px">
+      <div class="row spread"><h2 id="w-title">修改紀錄</h2><button class="btn ghost" id="w-cancel" type="button">取消</button></div>
+      <div class="panel">
+        <label class="eyebrow" for="w-date">日期</label>
+        <input id="w-date" class="search" type="date">
+        <span class="hint">改重量或次數後按下方「儲存修改」才會生效。沒填次數的組會被丟掉。</span>
+      </div>
+      <div id="w-list" style="display:flex;flex-direction:column;gap:12px"></div>
+      <div id="w-picker-slot"></div>
+      <div class="row" style="flex-wrap:nowrap">
+        <button class="btn" id="w-delete" type="button" style="flex:1">刪除這筆</button>
+        <button class="btn primary" id="w-save" type="button" style="flex:2">儲存修改</button>
+      </div>
+      <div class="confirm" id="w-del-confirm" hidden>
+        <div class="row spread"><span>刪除這筆訓練紀錄？刪掉後進度圖表與個人紀錄會跟著重算。</span>
+          <span class="row"><button class="btn ghost" id="w-del-no" type="button">取消</button><button class="btn primary" id="w-del-yes" type="button">刪除</button></span></div>
+      </div>
+    </div>
   </section>
 
   <!-- PROGRESS -->
@@ -280,6 +307,8 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
         <form class="row" id="bw-form"><input id="bw-input" type="number" step="0.1" min="20" max="300" placeholder="72.5" aria-label="今天體重（公斤）"><button class="btn primary" type="submit">記錄</button></form>
       </div>
       <svg class="chart" id="c-bw" viewBox="0 0 340 150" role="img" aria-label="體重趨勢"></svg>
+      <span class="eyebrow">修改過往紀錄</span>
+      <ul class="bwlist" id="bw-list"></ul>
     </div>
     <div class="panel" id="backup" hidden>
       <h2>資料備份</h2>
@@ -389,6 +418,8 @@ try{S=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY)||"null
 if(S&&S.sample&&(S.ver||0)<3)S=null; // refresh old sample data
 if(!S||!Array.isArray(S.workouts))S=seed();
 S.custom=S.custom||[];S.routines=S.routines||[];S.settings=Object.assign({rest:90,exRest:{}},S.settings||{});S.ver=3;
+S.bodyweight=S.bodyweight||[];
+S.workouts.forEach((w,i)=>{if(!w.id)w.id=`w${i}-${w.date}`}); // older backups predate ids; editing needs one
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const $=id=>document.getElementById(id);
 const el=(t,a={},...c)=>{const n=document.createElement(t);for(const k in a){if(k==="class")n.className=a[k];else if(k.startsWith("on"))n.addEventListener(k.slice(2),a[k]);else n.setAttribute(k,a[k])}c.flat().forEach(x=>n.append(x));return n};
@@ -400,7 +431,7 @@ document.querySelectorAll("nav.bar button").forEach(b=>b.addEventListener("click
 function show(t){
   document.querySelectorAll("nav.bar button").forEach(b=>{if(b.dataset.tab===t)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
   ["today","history","progress"].forEach(k=>$("tab-"+k).hidden=k!==t);
-  if(t==="history")renderHistory(); if(t==="progress")renderProgress();
+  if(t==="today")renderDraft(); if(t==="history")renderHistory(); if(t==="progress")renderProgress();
   try{localStorage.setItem(KEY+"-tab",t)}catch(e){}
   window.scrollTo(0,0);
 }
@@ -447,6 +478,8 @@ $("custom-form").addEventListener("submit",e=>{e.preventDefault();const name=$("
   S.custom.push({name,g:$("c-g").value,eq:$("c-eq").value,custom:true});save();
   $("c-name").value="";$("custom-form").hidden=true;renderPicker();addEx(name)});
 function addEx(name){
+  if(wEdit){if(wEdit.exercises.some(e=>e.name===name)){toast(`這筆紀錄裡已經有${name}`);return}
+    wEdit.exercises.push({name,sets:[{kg:"",reps:""}]});renderWorkoutEdit();toast(`已加入${name}，填上重量與次數`);return}
   if(editing){if(editing.exercises.some(e=>e.name===name)){toast(`範本裡已經有${name}`);return}
     editing.exercises.push({name,sets:(lastSetsFor(name)||[0,0,0]).length});renderEdit();toast(`已加入${name}`);return}
   const prev=lastSetsFor(name);
@@ -609,18 +642,82 @@ $("save-routine").addEventListener("click",()=>{
 
 /* ---------- history ---------- */
 function renderHistory(){
+  $("hist-head").hidden=!!wEdit;
+  $("w-edit").hidden=!wEdit;
+  if(wEdit)return renderWorkoutEdit();
   const h=$("hist");h.replaceChildren();
   if(!S.workouts.length){h.append(el("div",{class:"panel empty"},"完成第一次訓練後，紀錄會出現在這裡。"));return}
   S.workouts.forEach(w=>{
     const d=parse(w.date);
-    h.append(el("div",{class:"panel hitem"},
+    h.append(el("button",{type:"button",class:"panel hitem","aria-label":`修改 ${d.getMonth()+1} 月 ${d.getDate()} 日的訓練`,onclick:()=>openWorkout(w)},
       el("div",{class:"hdate"},el("b",{},String(d.getDate())),el("span",{},`${d.getMonth()+1}月 週${"日一二三四五六"[d.getDay()]}`)),
       el("div",{class:"hmeta"},
         el("div",{class:"dots"},...w.exercises.map(e=>el("span",{class:"dot","data-g":G(e.name),title:e.name}))),
         el("div",{class:"hlist"},w.exercises.map(e=>`${e.name} ${e.sets.length}組`).join(" · "))),
-      el("div",{class:"hvol"},el("div",{class:"num"},fmtK(vol(w))),el("span",{class:"hint"},"公斤"))));
+      el("div",{class:"hvol"},el("div",{class:"num"},fmtK(vol(w))),el("span",{class:"hint"},"公斤")),
+      el("span",{class:"hchev","aria-hidden":"true"},"›")));
   });
 }
+
+/* ---------- correct a saved workout ---------- */
+let wEdit=null; // working copy; nothing is written back until 儲存修改
+function openWorkout(w){
+  wEdit=JSON.parse(JSON.stringify(w));
+  $("w-del-confirm").hidden=true;
+  $("w-date").max=ymd(new Date());
+  renderHistory();window.scrollTo(0,0);
+}
+function closeWorkout(){wEdit=null;renderHistory();renderSummary();window.scrollTo(0,0)}
+function renderWorkoutEdit(){
+  const r=S.routines.find(x=>x.id===wEdit.routine);
+  $("w-title").textContent=r?`修改「${r.name}」`:"修改紀錄";
+  if(document.activeElement!==$("w-date"))$("w-date").value=wEdit.date;
+  $("w-picker-slot").append($("picker-panel"));
+  const list=$("w-list");list.replaceChildren();
+  if(!wEdit.exercises.length)list.append(el("div",{class:"panel empty"},"這筆紀錄裡沒有動作了。從下方加入動作，或按「刪除這筆」整筆移除。"));
+  wEdit.exercises.forEach((ex,ei)=>{
+    const tb=el("tbody");
+    ex.sets.forEach((st,si)=>{
+      const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${si+1} 組重量`,value:st.kg});
+      const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0","aria-label":`第 ${si+1} 組次數`,value:st.reps});
+      kg.addEventListener("input",()=>{st.kg=kg.value===""?"":+kg.value});
+      rp.addEventListener("input",()=>{st.reps=rp.value===""?"":+rp.value});
+      tb.append(el("tr",{},el("td",{class:"num hint"},String(si+1)),el("td",{},kg),el("td",{},rp),
+        el("td",{},el("button",{type:"button",class:"iconbtn","aria-label":`刪除第 ${si+1} 組`,
+          onclick:()=>{ex.sets.splice(si,1);renderWorkoutEdit()}},"✕"))));
+    });
+    const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
+    list.append(el("div",{class:"panel ex","data-g":meta.g},
+      el("div",{class:"row spread"},el("div",{class:"row"},el("h3",{},ex.name),el("span",{class:"tag"},`${meta.g}${meta.eq?" · "+meta.eq:""}`)),
+        el("button",{type:"button",class:"iconbtn",onclick:()=>{wEdit.exercises.splice(ei,1);renderWorkoutEdit()}},"移除")),
+      el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:28px"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:46px"},""))),tb),
+      el("div",{class:"row"},
+        el("button",{type:"button",class:"btn ghost",onclick:()=>{const l=ex.sets[ex.sets.length-1]||{kg:"",reps:""};ex.sets.push({kg:l.kg,reps:l.reps});renderWorkoutEdit()}},"＋ 加一組"))));
+  });
+}
+$("w-date").addEventListener("change",()=>{
+  const v=$("w-date").value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){$("w-date").value=wEdit.date;toast("請選一個有效的日期");return}
+  if(v>ymd(new Date())){$("w-date").value=wEdit.date;toast("日期不能選在今天之後");return}
+  wEdit.date=v;
+});
+$("w-cancel").addEventListener("click",()=>{closeWorkout();toast("已取消，紀錄沒有變動")});
+$("w-save").addEventListener("click",()=>{
+  const ex=wEdit.exercises.map(e=>({name:e.name,sets:e.sets.filter(st=>+st.reps>0).map(st=>({kg:+st.kg||0,reps:+st.reps}))})).filter(e=>e.sets.length);
+  if(!ex.length){toast("每個動作至少要有一組填了次數。要整筆移除請按「刪除這筆」。");return}
+  const i=S.workouts.findIndex(w=>w.id===wEdit.id);
+  if(i<0){toast("找不到這筆紀錄，可能已經被刪掉了");closeWorkout();return}
+  const w={...S.workouts[i],date:wEdit.date,exercises:ex};
+  S.workouts[i]=w;S.workouts.sort((a,b)=>b.date.localeCompare(a.date));save();
+  closeWorkout();toast(`已更新：總量 ${fmtK(vol(w))} 公斤`);
+});
+$("w-delete").addEventListener("click",()=>$("w-del-confirm").hidden=false);
+$("w-del-no").addEventListener("click",()=>$("w-del-confirm").hidden=true);
+$("w-del-yes").addEventListener("click",()=>{
+  const d=parse(wEdit.date);
+  S.workouts=S.workouts.filter(w=>w.id!==wEdit.id);save();
+  closeWorkout();toast(`已刪除 ${d.getMonth()+1} 月 ${d.getDate()} 日的訓練紀錄`);
+});
 
 /* ---------- progress ---------- */
 function bests(){const b={};S.workouts.forEach(w=>w.exercises.forEach(e=>e.sets.forEach(s=>{const v=e1rm(s.kg,s.reps);if(!b[e.name]||v>b[e.name].e||(v===b[e.name].e&&w.date>b[e.name].date))b[e.name]={e:v,kg:s.kg,reps:s.reps,date:w.date}})));return b}
@@ -671,11 +768,37 @@ function renderProgress(){
   all.forEach(n=>pr.append(el("span",{class:"row",style:"gap:8px"},el("span",{class:"dot","data-g":G(n)}),n),el("span",{class:"num"},b[n].kg?`${b[n].kg}×${b[n].reps}`:`自體重×${b[n].reps}`),el("span",{class:"num",style:"text-align:right;font-weight:600"},b[n].e?Math.round(b[n].e)+" kg":"—")));
   const bw=[...S.bodyweight].sort((a,c)=>a.date.localeCompare(c.date)).map(x=>({d:x.date,v:x.kg}));
   line($("c-bw"),bw,340,150,40,22,16,v=>v.toFixed(1),"var(--accent)");
+  renderBwList();
+}
+let bwAll=false;
+const BW_LIM=8;
+function renderBwList(){
+  const box=$("bw-list");box.replaceChildren();
+  const rows=[...S.bodyweight].sort((a,b)=>b.date.localeCompare(a.date));
+  if(!rows.length){box.append(el("li",{class:"hint",style:"display:block"},"記錄體重之後，可以在這裡改數字或刪掉記錯的那天。"));return}
+  rows.slice(0,bwAll?rows.length:BW_LIM).forEach(r=>{
+    const d=parse(r.date);
+    const inp=el("input",{type:"number",class:"mini",step:"0.1",min:"20",max:"300",value:r.kg,"aria-label":`${d.getMonth()+1} 月 ${d.getDate()} 日的體重`});
+    inp.addEventListener("change",()=>{
+      const v=parseFloat(inp.value);
+      if(!(v>=20&&v<=300)){inp.value=r.kg;toast("請輸入 20 到 300 之間的體重（公斤）");return}
+      r.kg=+v.toFixed(1);save();renderProgress();toast(`${d.getMonth()+1} 月 ${d.getDate()} 日改為 ${r.kg} 公斤`);
+    });
+    box.append(el("li",{},
+      el("span",{},`${d.getMonth()+1} 月 ${d.getDate()} 日`),
+      el("label",{class:"row hint",style:"gap:4px"},inp,"公斤"),
+      el("button",{type:"button",class:"iconbtn","aria-label":`刪除 ${d.getMonth()+1} 月 ${d.getDate()} 日的體重`,
+        onclick:()=>{S.bodyweight=S.bodyweight.filter(x=>x.date!==r.date);save();renderProgress();toast("已刪除這筆體重")}},"✕")));
+  });
+  if(!bwAll&&rows.length>BW_LIM)box.append(el("li",{style:"display:block;border:0;background:none;padding:0"},
+    el("button",{type:"button",class:"btn ghost",onclick:()=>{bwAll=true;renderBwList()}},`顯示全部 ${rows.length} 筆`)));
 }
 $("ex-sel").addEventListener("change",render1rm);
 $("bw-form").addEventListener("submit",e=>{e.preventDefault();const v=parseFloat($("bw-input").value);
   if(!(v>=20&&v<=300)){toast("請輸入 20 到 300 之間的體重（公斤）");return}
-  const d=ymd(new Date());S.bodyweight=S.bodyweight.filter(x=>x.date!==d);S.bodyweight.push({date:d,kg:+v.toFixed(1)});save();$("bw-input").value="";renderProgress();toast(`已記錄體重 ${v.toFixed(1)} 公斤`)});
+  const d=ymd(new Date());const had=S.bodyweight.some(x=>x.date===d);
+  S.bodyweight=S.bodyweight.filter(x=>x.date!==d);S.bodyweight.push({date:d,kg:+v.toFixed(1)});save();$("bw-input").value="";renderProgress();
+  toast(`${had?"已更新今天的體重為":"已記錄體重"} ${v.toFixed(1)} 公斤`)});
 
 /* ---------- backup (PWA build only) ---------- */
 if(document.documentElement.dataset.build==="pwa"){
