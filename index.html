@@ -452,10 +452,8 @@ let toastT;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;c
 
 /* ---------- tabs ---------- */
 document.querySelectorAll("nav.bar button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.tab)));
+const activeTab=()=>["today","history","progress"].find(k=>!$("tab-"+k).hidden)||"today";
 function show(t){
-  // the editor borrows the shared #picker-panel; leaving its tab has to release it,
-  // or addEx() would keep feeding the hidden workout instead of the draft
-  if(t!=="history"&&wEdit){wEdit=null;renderHistory();toast("已離開修改畫面，剛才的修改沒有儲存")}
   document.querySelectorAll("nav.bar button").forEach(b=>{if(b.dataset.tab===t)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
   ["today","history","progress"].forEach(k=>$("tab-"+k).hidden=k!==t);
   if(t==="today")renderDraft(); if(t==="history")renderHistory(); if(t==="progress")renderProgress();
@@ -519,17 +517,31 @@ function renameEverywhere(from,to){
   if(S.settings.exRest[from]!==undefined){S.settings.exRest[to]=S.settings.exRest[from];delete S.settings.exRest[from]}
 }
 function customForm(name){
-  cEdit=name;
+  cEdit=name;cDel=null;$("c-del-confirm").hidden=true;
   const c=name&&S.custom.find(x=>x.name===name);
   $("c-name").value=c?c.name:"";
   $("c-g").value=c?c.g:GROUPS[0];
   $("c-eq").value=c?c.eq:EQUIP[0];
   $("c-submit").textContent=c?"儲存修改":"加入動作庫";
   $("c-cancel").hidden=!c;
-  const u=c&&usageOf(name);
-  $("c-hint").hidden=!c;
-  if(c)$("c-hint").textContent=u.w||u.r?`改名會一併更新 ${u.w} 筆紀錄、${u.r} 個範本。`:"還沒有紀錄或範本用到這個動作。";
+  updateCustomHint();
   $("custom-form").hidden=false;$("c-name").focus();
+}
+// a name can carry records even when it is not in the library, so say what a save
+// will actually do: reattach old records, or merge this entry into them
+function updateCustomHint(){
+  const h=$("c-hint"),n=$("c-name").value.trim();
+  const show=t=>{h.textContent=t;h.hidden=false};
+  const mine=()=>{const u=usageOf(cEdit);
+    return u.w||u.r?`改名會一併更新 ${u.w} 筆紀錄、${u.r} 個範本。`:"還沒有紀錄或範本用到這個動作。"};
+  if(n&&n!==cEdit&&!allEx().some(x=>x.name===n&&x.name!==cEdit)){
+    const u=usageOf(n);
+    if(u.w||u.r)return show(cEdit
+      ?`過去的 ${u.w} 筆紀錄、${u.r} 個範本裡也有「${n}」，改成這個名字會把兩邊併成同一個動作。`
+      :`過去有 ${u.w} 筆紀錄、${u.r} 個範本用過「${n}」，加入後會接回那些資料。`);
+  }
+  if(cEdit)return show(mine());
+  h.hidden=true;
 }
 function closeCustomForm(){cEdit=null;$("custom-form").hidden=true;$("c-name").value="";$("c-hint").hidden=true;$("c-cancel").hidden=true;$("c-submit").textContent="加入動作庫"}
 $("custom-open").addEventListener("click",()=>{
@@ -537,6 +549,7 @@ $("custom-open").addEventListener("click",()=>{
   customForm(null);
 });
 $("c-cancel").addEventListener("click",closeCustomForm);
+$("c-name").addEventListener("input",updateCustomHint);
 $("custom-manage").addEventListener("click",()=>{
   const box=$("custom-box");box.hidden=!box.hidden;
   $("c-del-confirm").hidden=true;cDel=null;
@@ -556,7 +569,7 @@ function renderCustomList(){
         el("button",{type:"button",class:"iconbtn","aria-label":`移除${c.name}`,onclick:()=>{
           cDel=c.name;
           $("c-del-msg").textContent=u.w||u.r
-            ?`把「${c.name}」從動作庫移除？${u.w} 筆紀錄和 ${u.r} 個範本裡的資料會留著，只是之後選不到這個動作。`
+            ?`把「${c.name}」從動作庫移除？${u.w} 筆紀錄和 ${u.r} 個範本裡的資料會留著，只是之後選不到這個動作。用同樣的名字再加一次就能接回來。`
             :`把「${c.name}」從動作庫移除？`;
           $("c-del-confirm").hidden=false;
         }},"✕"))));
@@ -564,7 +577,9 @@ function renderCustomList(){
 }
 $("c-del-no").addEventListener("click",()=>{cDel=null;$("c-del-confirm").hidden=true});
 $("c-del-yes").addEventListener("click",()=>{
-  const n=cDel;S.custom=S.custom.filter(x=>x.name!==n);save();
+  const n=cDel;
+  if(!n||!S.custom.some(x=>x.name===n)){cDel=null;$("c-del-confirm").hidden=true;renderCustomList();toast("這個自訂動作已經不在動作庫裡了");return}
+  S.custom=S.custom.filter(x=>x.name!==n);save();
   cDel=null;$("c-del-confirm").hidden=true;
   if(cEdit===n)closeCustomForm();
   refreshExerciseViews();toast(`已從動作庫移除「${n}」`);
@@ -574,9 +589,6 @@ $("custom-form").addEventListener("submit",e=>{
   const name=$("c-name").value.trim(),g=$("c-g").value,eq=$("c-eq").value;
   if(!name)return;
   if(allEx().some(x=>x.name===name&&x.name!==cEdit)){toast(`動作庫裡已經有「${name}」`);return}
-  // a name freed by an earlier removal can still be sitting in the history;
-  // reusing it would silently merge two different exercises into one line of stats
-  if(name!==cEdit){const u=usageOf(name);if(u.w||u.r){toast(`過去的紀錄或範本裡已經有「${name}」，換個名字才不會混在一起`);return}}
   if(cEdit){
     const c=S.custom.find(x=>x.name===cEdit);
     if(!c){toast("找不到這個自訂動作");closeCustomForm();return}
@@ -587,20 +599,23 @@ $("custom-form").addEventListener("submit",e=>{
     toast(from===name?`已更新「${name}」`:`已改名為「${name}」，紀錄與範本一起更新`);
     return;
   }
+  const u=usageOf(name);   // re-adding a removed name reattaches its old records
   S.custom.push({name,g,eq,custom:true});save();
   closeCustomForm();refreshExerciseViews();
-  if(S.draft||editing||wEdit)addEx(name); else toast(`已加入動作庫：「${name}」`);
+  if(u.w||u.r)toast(`已加入「${name}」，接回 ${u.w} 筆紀錄、${u.r} 個範本`);
+  else if(S.draft||editing||wEdit)addEx(name);
+  else toast(`已加入動作庫：「${name}」`);
 });
 // redraw whichever view currently owns the shared picker, so renamed exercises update in place
 function refreshExerciseViews(){
   renderPicker();
   if(!$("custom-box").hidden)renderCustomList();
-  if(wEdit)renderWorkoutEdit(); else renderDraft();
+  if(wEdit&&activeTab()==="history")renderWorkoutEdit(); else renderDraft();
   if(!$("tab-progress").hidden)renderProgress();
-  if(!$("tab-history").hidden&&!wEdit)renderHistory();
+  if(activeTab()==="history"&&!wEdit)renderHistory();
 }
 function addEx(name){
-  if(wEdit){if(wEdit.exercises.some(e=>e.name===name)){toast(`這筆紀錄裡已經有${name}`);return}
+  if(wEdit&&activeTab()==="history"){if(wEdit.exercises.some(e=>e.name===name)){toast(`這筆紀錄裡已經有${name}`);return}
     wEdit.exercises.push({name,sets:[{kg:"",reps:""}]});renderWorkoutEdit();toast(`已加入${name}，填上重量與次數`);return}
   if(editing){if(editing.exercises.some(e=>e.name===name)){toast(`範本裡已經有${name}`);return}
     editing.exercises.push({name,sets:(lastSetsFor(name)||[0,0,0]).length});renderEdit();toast(`已加入${name}`);return}
@@ -681,6 +696,8 @@ $("discard").addEventListener("click",()=>$("discard-confirm").hidden=false);
 $("discard-no").addEventListener("click",()=>$("discard-confirm").hidden=true);
 $("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;restEnd=0;clearInterval(restIv);tick();renderDraft()});
 $("finish").addEventListener("click",()=>{
+  const bad=badSet(S.draft.exercises);
+  if(bad){toast(bad);return}
   const ex=S.draft.exercises.map(e=>({name:e.name,sets:e.sets.filter(s=>s.done&&+s.reps>0).map(s=>({kg:+s.kg||0,reps:+s.reps}))})).filter(e=>e.sets.length);
   if(!ex.length){toast("還沒有打勾完成的組。完成一組後按 ✓ 再結束訓練。");return}
   const before=bests();
@@ -784,6 +801,18 @@ function renderHistory(){
   });
 }
 
+// the number inputs carry min="0" but nothing ever submits these forms, so the
+// attribute is decorative — negative weight would quietly shrink every volume total
+function badSet(list){
+  for(const e of list)for(const st of e.sets){
+    if(+st.kg<0)return `「${e.name}」的重量不能是負數。`;
+    if(+st.reps<0)return `「${e.name}」的次數不能是負數。`;
+    if(+st.reps>999)return `「${e.name}」的次數看起來不對，請確認。`;
+    if(+st.kg>1000)return `「${e.name}」的重量看起來不對，請確認。`;
+  }
+  return null;
+}
+
 /* ---------- correct a saved workout ---------- */
 let wEdit=null; // working copy; nothing is written back until 儲存修改
 function openWorkout(w){
@@ -828,8 +857,12 @@ $("w-date").addEventListener("change",()=>{
 });
 $("w-cancel").addEventListener("click",()=>{closeWorkout();toast("已取消，紀錄沒有變動")});
 $("w-save").addEventListener("click",()=>{
+  const bad=badSet(wEdit.exercises);
+  if(bad){toast(bad);return}
   const ex=wEdit.exercises.map(e=>({name:e.name,sets:e.sets.filter(st=>+st.reps>0).map(st=>({kg:+st.kg||0,reps:+st.reps}))})).filter(e=>e.sets.length);
-  if(!ex.length){toast("每個動作至少要有一組填了次數。要整筆移除請按「刪除這筆」。");return}
+  const empty=wEdit.exercises.find(e=>!e.sets.some(st=>+st.reps>0));
+  if(empty){toast(`「${empty.name}」沒有任何一組填了次數。要拿掉這個動作請按它的「移除」。`);return}
+  if(!ex.length){toast("這筆紀錄沒有東西可以存。要整筆移除請按「刪除這筆」。");return}
   const i=S.workouts.findIndex(w=>w.id===wEdit.id);
   if(i<0){toast("找不到這筆紀錄，可能已經被刪掉了");closeWorkout();return}
   const w={...S.workouts[i],date:wEdit.date,exercises:ex};
@@ -946,7 +979,7 @@ if(document.documentElement.dataset.build==="pwa"){
     }catch(_){toast("這不是 LiftSync 的備份檔，請選擇匯出時產生的 .json 檔")}
   });
   $("import-no").addEventListener("click",()=>{pending=null;$("import-confirm").hidden=true});
-  $("import-yes").addEventListener("click",()=>{S=normalize(pending);S.sample=false;
+  $("import-yes").addEventListener("click",()=>{S=normalize(pending);S.sample=false;wEdit=null;
     save();pending=null;$("import-confirm").hidden=true;renderAll();showLast();toast(`已還原 ${S.workouts.length} 次訓練`)});
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
@@ -954,7 +987,8 @@ if(document.documentElement.dataset.build==="pwa"){
 /* ---------- sample data ---------- */
 $("clear-sample").addEventListener("click",()=>$("clear-confirm").hidden=false);
 $("clear-no").addEventListener("click",()=>$("clear-confirm").hidden=true);
-$("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],draft:null,sample:false,custom:S.custom,routines:S.routines,settings:S.settings};save();$("clear-confirm").hidden=true;renderAll();toast("已清除範例資料")});
+$("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],draft:null,sample:false,custom:S.custom,routines:S.routines,settings:S.settings};save();
+  wEdit=null;$("clear-confirm").hidden=true;renderAll();if(activeTab()==="history")renderHistory();toast("已清除範例資料")});
 
 function renderAll(){renderSummary();renderPicker();renderRestSettings();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
 renderAll();
