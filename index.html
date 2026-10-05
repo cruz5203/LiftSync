@@ -235,15 +235,31 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
       <div id="draft-list" style="display:flex;flex-direction:column;gap:12px"></div>
       <div id="d-picker-slot"></div>
       <div class="panel" id="picker-panel">
-        <div class="row spread"><span class="eyebrow">加入動作</span><button type="button" class="btn ghost" id="custom-open">＋ 自訂動作</button></div>
+        <div class="row spread"><span class="eyebrow">加入動作</span>
+          <span class="row" style="gap:2px">
+            <button type="button" class="btn ghost" id="custom-manage" hidden>管理自訂</button>
+            <button type="button" class="btn ghost" id="custom-open">＋ 自訂動作</button>
+          </span></div>
         <form class="custom" id="custom-form" hidden>
           <input id="c-name" type="text" maxlength="24" placeholder="動作名稱，例如：坐姿推胸機（窄握）" aria-label="動作名稱" required>
           <div class="row" style="gap:8px">
             <select id="c-g" aria-label="部位"></select>
             <select id="c-eq" aria-label="器材"></select>
-            <button type="submit" class="btn primary">加入動作庫</button>
+            <button type="submit" class="btn primary" id="c-submit">加入動作庫</button>
+            <button type="button" class="btn ghost" id="c-cancel" hidden>取消</button>
           </div>
+          <span class="hint" id="c-hint" hidden></span>
         </form>
+        <div id="custom-box" hidden style="display:flex;flex-direction:column;gap:8px">
+          <span class="hint">這些是你自己加的動作。改名字會一起改掉過去的紀錄與範本，所以統計不會斷掉。</span>
+          <ul class="rlist" id="custom-list"></ul>
+          <div class="confirm" id="c-del-confirm" hidden>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span id="c-del-msg"></span>
+              <span class="row" style="justify-content:flex-end"><button class="btn ghost" id="c-del-no" type="button">取消</button><button class="btn primary" id="c-del-yes" type="button">從動作庫移除</button></span>
+            </div>
+          </div>
+        </div>
         <input id="search" type="search" class="search" placeholder="搜尋動作，例如：划船、腿、機" aria-label="搜尋動作">
         <div class="chips" id="f-g" role="group" aria-label="依部位篩選"></div>
         <div class="chips" id="f-eq" role="group" aria-label="依器材篩選"></div>
@@ -466,6 +482,8 @@ function lastSetsFor(name){for(const w of S.workouts){const e=w.exercises.find(x
 let fG="全部",fEq="全部",showAll=false;
 function chipRow(box,opts,cur,on){box.replaceChildren(...opts.map(o=>el("button",{type:"button",class:"chip","aria-pressed":String(o===cur),onclick:()=>on(o)},o)))}
 function renderPicker(){
+  $("custom-manage").hidden=!S.custom.length;
+  if(!S.custom.length)$("custom-box").hidden=true;
   chipRow($("f-g"),["全部",...GROUPS],fG,o=>{fG=o;showAll=false;renderPicker()});
   chipRow($("f-eq"),["全部",...EQUIP],fEq,o=>{fEq=o;showAll=false;renderPicker()});
   const q=$("search").value.trim();
@@ -481,18 +499,112 @@ function renderPicker(){
   if(shown.length<list.length)p.append(el("button",{type:"button",class:"more",onclick:()=>{showAll=true;renderPicker()}},`顯示全部 ${list.length} 個動作`));
 }
 $("search").addEventListener("input",renderPicker);
-$("custom-open").addEventListener("click",()=>{const f=$("custom-form");f.hidden=!f.hidden;if(!f.hidden)$("c-name").focus()});
 $("c-g").replaceChildren(...GROUPS.map(g=>el("option",{value:g},g)));
 $("c-eq").replaceChildren(...EQUIP.map(g=>el("option",{value:g},g)));
-$("custom-form").addEventListener("submit",e=>{e.preventDefault();const name=$("c-name").value.trim();
-  if(!name)return; if(allEx().some(x=>x.name===name)){toast(`動作庫裡已經有「${name}」`);return}
-  S.custom.push({name,g:$("c-g").value,eq:$("c-eq").value,custom:true});save();
-  $("c-name").value="";$("custom-form").hidden=true;renderPicker();addEx(name)});
+
+/* ---------- custom exercise library ---------- */
+let cEdit=null;   // name of the custom exercise being edited, null while adding a new one
+let cDel=null;    // name queued for removal
+const usageOf=n=>({w:S.workouts.filter(x=>x.exercises.some(e=>e.name===n)).length,
+                   r:S.routines.filter(x=>x.exercises.some(e=>e.name===n)).length});
+// the name is the only key tying a record to an exercise, so a rename has to sweep
+// every place one is stored or the history detaches from the library entry
+function renameEverywhere(from,to){
+  const hit=l=>l&&l.forEach(e=>{if(e.name===from)e.name=to});
+  S.workouts.forEach(w=>hit(w.exercises));
+  S.routines.forEach(r=>hit(r.exercises));
+  if(S.draft)hit(S.draft.exercises);
+  if(editing)hit(editing.exercises);
+  if(wEdit)hit(wEdit.exercises);
+  if(S.settings.exRest[from]!==undefined){S.settings.exRest[to]=S.settings.exRest[from];delete S.settings.exRest[from]}
+}
+function customForm(name){
+  cEdit=name;
+  const c=name&&S.custom.find(x=>x.name===name);
+  $("c-name").value=c?c.name:"";
+  $("c-g").value=c?c.g:GROUPS[0];
+  $("c-eq").value=c?c.eq:EQUIP[0];
+  $("c-submit").textContent=c?"儲存修改":"加入動作庫";
+  $("c-cancel").hidden=!c;
+  const u=c&&usageOf(name);
+  $("c-hint").hidden=!c;
+  if(c)$("c-hint").textContent=u.w||u.r?`改名會一併更新 ${u.w} 筆紀錄、${u.r} 個範本。`:"還沒有紀錄或範本用到這個動作。";
+  $("custom-form").hidden=false;$("c-name").focus();
+}
+function closeCustomForm(){cEdit=null;$("custom-form").hidden=true;$("c-name").value="";$("c-hint").hidden=true;$("c-cancel").hidden=true;$("c-submit").textContent="加入動作庫"}
+$("custom-open").addEventListener("click",()=>{
+  if(!$("custom-form").hidden&&!cEdit){closeCustomForm();return}
+  customForm(null);
+});
+$("c-cancel").addEventListener("click",closeCustomForm);
+$("custom-manage").addEventListener("click",()=>{
+  const box=$("custom-box");box.hidden=!box.hidden;
+  $("c-del-confirm").hidden=true;cDel=null;
+  if(!box.hidden)renderCustomList();
+});
+function renderCustomList(){
+  const ul=$("custom-list");ul.replaceChildren();
+  if(!S.custom.length){ul.append(el("li",{class:"hint",style:"display:block"},"還沒有自訂動作。"));return}
+  S.custom.forEach(c=>{
+    const u=usageOf(c.name);
+    ul.append(el("li",{},
+      el("span",{class:"dot","data-g":c.g}),
+      el("span",{class:"nm"},c.name),
+      el("span",{class:"hint"},`${c.g} · ${c.eq}${u.w?` · ${u.w} 筆`:""}`),
+      el("span",{class:"ord"},
+        el("button",{type:"button",class:"iconbtn","aria-label":`編輯${c.name}`,onclick:()=>customForm(c.name)},"編輯"),
+        el("button",{type:"button",class:"iconbtn","aria-label":`移除${c.name}`,onclick:()=>{
+          cDel=c.name;
+          $("c-del-msg").textContent=u.w||u.r
+            ?`把「${c.name}」從動作庫移除？${u.w} 筆紀錄和 ${u.r} 個範本裡的資料會留著，只是之後選不到這個動作。`
+            :`把「${c.name}」從動作庫移除？`;
+          $("c-del-confirm").hidden=false;
+        }},"✕"))));
+  });
+}
+$("c-del-no").addEventListener("click",()=>{cDel=null;$("c-del-confirm").hidden=true});
+$("c-del-yes").addEventListener("click",()=>{
+  const n=cDel;S.custom=S.custom.filter(x=>x.name!==n);save();
+  cDel=null;$("c-del-confirm").hidden=true;
+  if(cEdit===n)closeCustomForm();
+  refreshExerciseViews();toast(`已從動作庫移除「${n}」`);
+});
+$("custom-form").addEventListener("submit",e=>{
+  e.preventDefault();
+  const name=$("c-name").value.trim(),g=$("c-g").value,eq=$("c-eq").value;
+  if(!name)return;
+  if(allEx().some(x=>x.name===name&&x.name!==cEdit)){toast(`動作庫裡已經有「${name}」`);return}
+  // a name freed by an earlier removal can still be sitting in the history;
+  // reusing it would silently merge two different exercises into one line of stats
+  if(name!==cEdit){const u=usageOf(name);if(u.w||u.r){toast(`過去的紀錄或範本裡已經有「${name}」，換個名字才不會混在一起`);return}}
+  if(cEdit){
+    const c=S.custom.find(x=>x.name===cEdit);
+    if(!c){toast("找不到這個自訂動作");closeCustomForm();return}
+    const from=c.name;
+    if(from!==name)renameEverywhere(from,name);
+    c.name=name;c.g=g;c.eq=eq;save();
+    closeCustomForm();refreshExerciseViews();
+    toast(from===name?`已更新「${name}」`:`已改名為「${name}」，紀錄與範本一起更新`);
+    return;
+  }
+  S.custom.push({name,g,eq,custom:true});save();
+  closeCustomForm();refreshExerciseViews();
+  if(S.draft||editing||wEdit)addEx(name); else toast(`已加入動作庫：「${name}」`);
+});
+// redraw whichever view currently owns the shared picker, so renamed exercises update in place
+function refreshExerciseViews(){
+  renderPicker();
+  if(!$("custom-box").hidden)renderCustomList();
+  if(wEdit)renderWorkoutEdit(); else renderDraft();
+  if(!$("tab-progress").hidden)renderProgress();
+  if(!$("tab-history").hidden&&!wEdit)renderHistory();
+}
 function addEx(name){
   if(wEdit){if(wEdit.exercises.some(e=>e.name===name)){toast(`這筆紀錄裡已經有${name}`);return}
     wEdit.exercises.push({name,sets:[{kg:"",reps:""}]});renderWorkoutEdit();toast(`已加入${name}，填上重量與次數`);return}
   if(editing){if(editing.exercises.some(e=>e.name===name)){toast(`範本裡已經有${name}`);return}
     editing.exercises.push({name,sets:(lastSetsFor(name)||[0,0,0]).length});renderEdit();toast(`已加入${name}`);return}
+  if(!S.draft){toast("先開始一次訓練，才能加入動作");return}
   const prev=lastSetsFor(name);
   const sets=prev?prev.map(s=>({kg:s.kg,reps:s.reps,done:false})):[{kg:"",reps:"",done:false}];
   S.draft.exercises.push({name,sets});save();renderDraft();
