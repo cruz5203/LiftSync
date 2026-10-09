@@ -143,6 +143,17 @@ G("normalize：修補載入與匯入的資料");
   ok("丟掉壞掉的進行中訓練",n.draft===null);
 }
 {
+  const n=normalize({workouts:[
+    {date:"2026-09-01",exercises:[null,{name:"臥推",sets:[{kg:60,reps:5},null]},{sets:[]}]}],
+    routines:[{id:"r",exercises:[null,{name:"臥推",sets:3}]}]});
+  ok("丟掉壞掉的動作項目",n.workouts[0].exercises.length===1&&n.workouts[0].exercises[0].name==="臥推",
+     JSON.stringify(n.workouts[0].exercises));
+  ok("丟掉壞掉的組",n.workouts[0].exercises[0].sets.length===1);
+  ok("範本裡壞掉的動作也丟掉",n.routines[0].exercises.length===1);
+  S=n;S.sample=false;renderAll();show("history");
+  ok("這種資料也 render 得出來",document.querySelectorAll("#hist button.hitem").length===1);
+}
+{
   const n=normalize({workouts:[],bodyweight:[
     {date:"2026-08-01",kg:70},{date:"2026-08-01",kg:71},{date:"2026-08-02",kg:72},null,{date:"2026-08-03"}]});
   ok("同一天的體重只留一筆",n.bodyweight.length===2,JSON.stringify(n.bodyweight));
@@ -189,6 +200,19 @@ ok("每一筆都是可點的卡片",document.querySelectorAll("#hist button.hite
   ok("刪除要先確認",!$("w-del-confirm").hidden);
   $("w-del-yes").click();
   ok("只刪掉那一筆",S.workouts.length===n-1&&!S.workouts.some(w=>w.id===id),n+" -> "+S.workouts.length);
+}
+{
+  // changing the date and then deleting must report the date the record really had
+  const today=ymd(new Date());
+  const idx=S.workouts.findIndex(w=>w.date!==today);
+  card(idx).click();
+  const real=parse(wEdit.date);
+  $("w-date").value=today;$("w-date").dispatchEvent(new Event("change"));
+  ok("日期先被改掉但還沒存",wEdit.date===today&&S.workouts.some(w=>w.id===wEdit.id&&w.date!==today));
+  $("w-delete").click();$("w-del-yes").click();
+  const t=$("toast").textContent, now=parse(today);
+  ok("刪除訊息用真正的日期",t.includes(`${real.getMonth()+1} 月 ${real.getDate()} 日`),t);
+  ok("而不是改過還沒存的日期",!t.includes(`${now.getMonth()+1} 月 ${now.getDate()} 日`),t);
 }
 {
   card(0).click();
@@ -351,6 +375,19 @@ ok("沒有自訂動作時不顯示管理按鈕",$("custom-manage").hidden);
   ok("沒有撞名時就只是改名",S.workouts[0].exercises.filter(e=>e.name==="丙").length===1
      &&!S.workouts[0].exercises.some(e=>e.name==="甲"));
 }
+{
+  // an imported backup can hold the same name twice in one workout; renaming it
+  // must still leave exactly one entry
+  fresh();
+  S.workouts[0].exercises.push({name:"丁",sets:[{kg:10,reps:5}]},{name:"丁",sets:[{kg:20,reps:5}]});
+  S.routines[0].exercises.push({name:"丁",sets:2},{name:"丁",sets:3});
+  renameEverywhere("丁","戊");
+  ok("同名出現兩次時改名也只留一個",S.workouts[0].exercises.filter(e=>e.name==="戊").length===1,
+     String(S.workouts[0].exercises.filter(e=>e.name==="戊").length));
+  ok("兩邊的組都保住",S.workouts[0].exercises.find(e=>e.name==="戊").sets.length===2);
+  ok("範本同名也合併",S.routines[0].exercises.filter(e=>e.name==="戊").length===1
+     &&S.routines[0].exercises.find(e=>e.name==="戊").sets===5);
+}
 
 /* ============================ 動作選擇面板的交接 ============================ */
 G("動作選擇面板在三個畫面之間交接");
@@ -428,6 +465,21 @@ G("匯入備份與清除範例");
   renderAll();
 }
 {
+  // a refused import had already torn down the rest timer and both editors
+  fresh();show("today");startRoutine(S.routines[0]);
+  startRest(120);openEdit(S.routines[0]);
+  const deadline=restEnd;
+  const real=renderAll;
+  renderAll=()=>{throw new Error("boom")};
+  await importFile({app:"liftsync",data:{ver:3,workouts:[],bodyweight:[],custom:[],routines:[],settings:{}}});
+  $("import-yes").click();
+  renderAll=real;
+  ok("被拒絕的匯入不會停掉休息計時",restEnd===deadline,restEnd+" vs "+deadline);
+  ok("存檔裡的截止時刻也還在",(JSON.parse(localStorage.getItem(RK))||{}).end===deadline);
+  ok("也不會關掉開著的範本編輯器",editing!==null);
+  renderAll();editing=null;stopRest();renderDraft();
+}
+{
   await importFile({app:"liftsync",data:{workouts:[],custom:{},routines:{},bodyweight:{}}});
   $("import-yes").click();
   ok("奇怪的備份匯入後仍可運作",Array.isArray(S.custom)&&S.workouts.length===0);
@@ -476,6 +528,12 @@ fresh();show("today");startRoutine(S.routines[0]);
   restEnd=0;restoreRest();
   ok("沒有進行中的訓練就不復活",restEnd===0&&localStorage.getItem(RK)===null);
   S.draft=keep;
+  localStorage.setItem(RK,JSON.stringify({end:"壞掉",total:90,alerted:false}));
+  restEnd=0;clearInterval(restIv);restoreRest();
+  ok("壞掉的截止時刻不復活",restEnd===0&&!$("rest").textContent.includes("NaN"),$("rest").textContent);
+  localStorage.setItem(RK,JSON.stringify({end:Date.now()+6*3600*1000,total:90,alerted:false}));
+  restEnd=0;clearInterval(restIv);restoreRest();
+  ok("太遠的未來時刻不復活",restEnd===0,$("rest").textContent);
 }
 {
   buzzes=0;beeped=0;notified=null;notes.length=0;hiddenFlag=true;
@@ -573,19 +631,25 @@ parent.postMessage({liftsyncTest:true,results:R},"*");
 <script>
 const out=document.getElementById("out"), tally=document.getElementById("tally");
 const howto=document.getElementById("howto");
-let onlyFail=false, lastResults=null, frame=null;
+let onlyFail=false, lastResults=null, frame=null, giveUp=null, running=false;
 
 // The app writes to the same origin's localStorage, so take everything out of the way
 // and put it back afterwards — running this must never cost somebody their training log.
 let stash=null;
 function stashStorage(){
-  stash={};
-  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);stash[k]=localStorage.getItem(k)}}
-  catch(e){stash=null}
+  // A re-run started before the last one finished must NOT snapshot again: by then the
+  // iframe has already written test data over everything, and that snapshot would be
+  // restored as if it were the user's log. The first snapshot is the real one.
+  if(stash)return;
+  const snap={};
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);snap[k]=localStorage.getItem(k)}}
+  catch(e){return}
+  stash=snap;
 }
 function restoreStorage(){
   if(!stash)return;
-  try{localStorage.clear();for(const k in stash)localStorage.setItem(k,stash[k])}catch(e){}
+  const snap=stash;stash=null;
+  try{localStorage.clear();for(const k in snap)localStorage.setItem(k,snap[k])}catch(e){}
 }
 window.addEventListener("beforeunload",restoreStorage);
 
@@ -616,15 +680,23 @@ function render(){
   }
 }
 
+function finish(){
+  clearTimeout(giveUp);giveUp=null;running=false;
+  document.getElementById("rerun").disabled=false;
+  restoreStorage();
+  if(frame){frame.remove();frame=null}
+}
 window.addEventListener("message",e=>{
   if(!e.data||!e.data.liftsyncTest)return;
   lastResults=e.data.results;
-  restoreStorage();
-  if(frame){frame.remove();frame=null}
+  finish();
   render();
 });
 
 async function run(){
+  if(running)return;                 // one run at a time, or the stash gets clobbered
+  running=true;document.getElementById("rerun").disabled=true;
+  clearTimeout(giveUp);giveUp=null;
   lastResults=null;onlyFail=false;
   tally.textContent="執行中…";out.replaceChildren();
   // Housekeeping only — a stale service worker would serve a cached index.html and the
@@ -653,7 +725,7 @@ async function run(){
     if(!doc||!doc.body){
       howto.style.borderLeftColor="var(--fail)";
       tally.innerHTML='<span class="f">無法讀取 index.html</span>';
-      restoreStorage();return;
+      finish();return;
     }
     howto.classList.add("hide");
     // G is taken by the app (muscle group lookup); the suite calls it G2
@@ -663,10 +735,10 @@ async function run(){
     const s=doc.createElement("script");
     s.textContent=document.getElementById("suite").textContent;
     doc.body.appendChild(s);
-    setTimeout(()=>{
+    giveUp=setTimeout(()=>{
       if(lastResults)return;
       tally.innerHTML='<span class="f">測試沒有回報結果</span>';
-      restoreStorage();
+      finish();
     },20000);
   });
   document.body.appendChild(frame);

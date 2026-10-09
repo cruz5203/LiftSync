@@ -452,10 +452,10 @@ function normalize(st){
   st.workouts.forEach((w,i)=>{
     if(!w.id||seen.has(w.id))w.id=`w${i}-${w.date}`;
     seen.add(w.id);
-    w.exercises=arr(w.exercises);
-    w.exercises.forEach(e=>{e.sets=arr(e.sets)});
+    w.exercises=arr(w.exercises).filter(e=>e&&e.name);
+    w.exercises.forEach(e=>{e.sets=arr(e.sets).filter(x=>x)});
   });
-  st.routines.forEach(r=>{r.exercises=arr(r.exercises)});
+  st.routines.forEach(r=>{r.exercises=arr(r.exercises).filter(e=>e&&e.name)});
   // one weigh-in per day is what the form and the chart assume; duplicates would make
   // the row editor write to, and the ✕ delete, more than the row that was tapped
   const bw=new Map();
@@ -464,7 +464,7 @@ function normalize(st){
   if(st.draft&&!Array.isArray(st.draft.exercises))st.draft=null;
   return st;
 }
-S=normalize(S);
+try{S=normalize(S)}catch(e){S=normalize(seed())}   // unreadable stored state must not brick the app
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const $=id=>document.getElementById(id);
 const el=(t,a={},...c)=>{const n=document.createElement(t);for(const k in a){if(k==="class")n.className=a[k];else if(k.startsWith("on"))n.addEventListener(k.slice(2),a[k]);else n.setAttribute(k,a[k])}c.flat().forEach(x=>n.append(x));return n};
@@ -533,11 +533,11 @@ function renameEverywhere(from,to){
   // hold the target — two entries of one name would break one-name-per-workout
   const hit=l=>{
     if(!l)return;
-    const dst=l.find(e=>e.name===to);
+    let dst=l.find(e=>e.name===to);
     for(let i=l.length-1;i>=0;i--){
       const e=l[i];
       if(e.name!==from)continue;
-      if(!dst){e.name=to;continue}
+      if(!dst){e.name=to;dst=e;continue}   // the first one renamed becomes the target
       if(Array.isArray(dst.sets)&&Array.isArray(e.sets))dst.sets=e.sets.concat(dst.sets);
       else dst.sets=Math.min(10,(+dst.sets||0)+(+e.sets||0));   // routines store a count
       l.splice(i,1);
@@ -670,13 +670,18 @@ const fmtSec=s=>s>=60?`${Math.floor(s/60)}:${pad(s%60)}`:`${s}秒`;
 let restEnd=0,restTotal=0,restIv,restAlerted=false;
 const REST_KEY=KEY+"-rest";
 const STALE_REST=15*60*1000;   // older than this and the rest is simply over
+const MAX_REST=900;            // the longest rest the settings allow
 // the countdown is a deadline, not a tally, so it survives the phone sleeping or the
 // system killing the app mid-set — without this a relaunch silently loses the rest
 function saveRest(){try{restEnd?localStorage.setItem(REST_KEY,JSON.stringify({end:restEnd,total:restTotal,alerted:restAlerted})):localStorage.removeItem(REST_KEY)}catch(e){}}
 function restoreRest(){
   let r=null;try{r=JSON.parse(localStorage.getItem(REST_KEY)||"null")}catch(e){}
-  if(!r||!S.draft||Date.now()-r.end>STALE_REST){try{localStorage.removeItem(REST_KEY)}catch(e){}return}
-  restEnd=r.end;restTotal=r.total||0;restAlerted=!!r.alerted;
+  // one-sided comparisons let NaN and a far-future deadline through; neither clears
+  // itself afterwards, so the timer would read NaN:NaN or count down for hours
+  const sane=r&&Number.isFinite(r.end)&&r.end>0
+    &&Date.now()-r.end<=STALE_REST&&r.end-Date.now()<=MAX_REST*1000;
+  if(!sane||!S.draft){try{localStorage.removeItem(REST_KEY)}catch(e){}return}
+  restEnd=r.end;restTotal=Number.isFinite(r.total)?r.total:0;restAlerted=!!r.alerted;
   clearInterval(restIv);tick();if(restEnd>Date.now())restIv=setInterval(tick,250);
 }
 function startRest(sec){restTotal=sec;restEnd=Date.now()+sec*1000;restAlerted=false;saveRest();clearInterval(restIv);tick();restIv=setInterval(tick,250)}
@@ -1011,7 +1016,8 @@ $("w-save").addEventListener("click",()=>{
 $("w-delete").addEventListener("click",()=>$("w-del-confirm").hidden=false);
 $("w-del-no").addEventListener("click",()=>$("w-del-confirm").hidden=true);
 $("w-del-yes").addEventListener("click",()=>{
-  const d=parse(wEdit.date);
+  const stored=S.workouts.find(w=>w.id===wEdit.id);   // the real date, not an unsaved edit
+  const d=parse(stored?stored.date:wEdit.date);
   S.workouts=S.workouts.filter(w=>w.id!==wEdit.id);save();
   closeWorkout();toast(`已刪除 ${d.getMonth()+1} 月 ${d.getDate()} 日的訓練紀錄`);
 });
@@ -1119,12 +1125,18 @@ if(document.documentElement.dataset.build==="pwa"){
   });
   $("import-no").addEventListener("click",()=>{pending=null;$("import-confirm").hidden=true});
   $("import-yes").addEventListener("click",()=>{
-    const prev=S;
+    const prev=S,pw=wEdit,pe=editing;
+    const pr={end:restEnd,total:restTotal,alerted:restAlerted};
     try{
       S=normalize(pending);S.sample=false;wEdit=null;editing=null;stopRest();
       renderAll();              // render first: a backup that throws must not be saved
     }catch(err){
-      S=prev;try{renderAll()}catch(e2){}   // the rollback render must not throw on top
+      // put back everything the attempt tore down, not just S — the rest was still
+      // counting down and there may have been an editor open
+      S=prev;wEdit=pw;editing=pe;
+      restEnd=pr.end;restTotal=pr.total;restAlerted=pr.alerted;saveRest();
+      clearInterval(restIv);if(restEnd>Date.now())restIv=setInterval(tick,250);
+      try{renderAll()}catch(e2){}
       pending=null;$("import-confirm").hidden=true;
       toast("這個備份檔的內容有問題，沒有匯入");return;
     }
