@@ -36,7 +36,7 @@ li.ok .tag{color:var(--pass)}li.no{border-color:var(--fail)}li.no .tag{color:var
 li .why{display:block;color:var(--muted);font-family:var(--mono);font-size:.76rem;
   margin-top:3px;word-break:break-all}
 .hide{display:none}
-iframe{position:fixed;left:-9999px;top:0;width:430px;height:900px;border:0}
+iframe{position:fixed;left:-9999px;top:0;width:360px;height:780px;border:0}
 </style>
 </head>
 <body>
@@ -77,6 +77,7 @@ const settle=()=>new Promise(r=>setTimeout(r,0));
 /* ---- stubs: capture what the app would emit, instead of emitting it ---- */
 let buzzes=0,beeped=0,hiddenFlag=false,notified=null;
 const notes=[];
+const realBeep=beep;
 beep=()=>{beeped++};
 navigator.vibrate=()=>{buzzes++;return true};
 Object.defineProperty(window,"Notification",{configurable:true,
@@ -621,6 +622,65 @@ fresh();show("history");
   ok("卡片版面仍是 grid",getComputedStyle(b).display==="grid");
 }
 
+
+/* ============================ 提示音 ============================ */
+G("提示音實際產生的波形");
+{
+  const OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  if(!OAC){ok("瀏覽器不支援離線音訊（略過）",true,"skipped");}
+  else{
+    const SR=44100, ctx=new OAC(1,SR,SR);
+    Object.defineProperty(ctx,"state",{configurable:true,get:()=>"running"});
+    const keep=audioCtx;audioCtx=ctx;
+    realBeep();                                      // the real one, not the counter stub
+    audioCtx=keep;
+    // headless can leave startRendering() pending forever; never hang the suite on it
+    const buf=await Promise.race([ctx.startRendering(),new Promise(r=>setTimeout(()=>r(null),8000))]);
+    if(!buf){ok("離線音訊沒有在時限內算完（略過）",true,"skipped");}
+    else{
+    const d=buf.getChannelData(0);
+    const peak=(a,b)=>{let m=0;for(let i=Math.round(a*SR);i<Math.round(b*SR)&&i<d.length;i++)m=Math.max(m,Math.abs(d[i]));return m};
+    const t1=peak(0,0.17), t2=peak(0.18,0.35), tail=peak(0.45,1);
+    ok("第一個音真的有聲音",t1>0.05,t1.toFixed(3));
+    ok("第二個音真的有聲音",t2>0.05,t2.toFixed(3));
+    ok("兩個音的音量相近",t2>t1*0.4,`${t1.toFixed(3)} vs ${t2.toFixed(3)}`);
+    ok("結束後安靜下來",tail<0.01,tail.toFixed(4));
+    }
+  }
+}
+
+/* ============================ 計時器實際走時 ============================ */
+G("計時器實際走完一次");
+fresh();show("today");startRoutine(S.routines[0]);
+{
+  S.settings.alert=false;restAlerted=false;
+  startRest(2);
+  ok("開始時顯示 00:02",$("rest").textContent==="00:02",$("rest").textContent);
+  await new Promise(r=>setTimeout(r,2400));          // no poking at restEnd: let it run
+  ok("時間到會自己歸零",$("rest").textContent==="00:00",$("rest").textContent);
+  ok("並進入結束狀態",document.querySelector(".restbox").classList.contains("ready"));
+  ok("提醒已經觸發過",restAlerted===true);
+  stopRest();
+}
+
+/* ============================ 版面 ============================ */
+G("窄螢幕版面（"+document.documentElement.clientWidth+"px）");
+{
+  const de=document.documentElement;
+  const noOverflow=label=>ok(label+"沒有橫向溢出",de.scrollWidth<=de.clientWidth+1,
+    de.scrollWidth+" / "+de.clientWidth);
+  fresh();
+  show("today");noOverflow("今天（範本清單）");
+  startRoutine(S.routines[0]);noOverflow("今天（訓練進行中）");
+  openEdit(S.routines[0]);noOverflow("範本編輯");
+  $("r-cancel").click();
+  show("history");noOverflow("紀錄");
+  document.querySelectorAll("#hist button.hitem")[0].click();noOverflow("修改紀錄");
+  $("w-cancel").click();
+  show("progress");noOverflow("進度");
+  $("discard").click();$("discard-yes").click();
+}
+
 }catch(e){
   R.push({group:group||"（執行中斷）",name:"測試中途拋出例外",pass:false,detail:(e&&e.stack||e)+""});
 }
@@ -631,7 +691,7 @@ parent.postMessage({liftsyncTest:true,results:R},"*");
 <script>
 const out=document.getElementById("out"), tally=document.getElementById("tally");
 const howto=document.getElementById("howto");
-let onlyFail=false, lastResults=null, frame=null, giveUp=null, running=false;
+let onlyFail=false, running=false;
 
 // The app writes to the same origin's localStorage, so take everything out of the way
 // and put it back afterwards — running this must never cost somebody their training log.
@@ -680,24 +740,263 @@ function render(){
   }
 }
 
+const ALL=[];
+let frames=[];
+function dropFrames(){frames.forEach(f=>f.remove());frames=[]}
+
 function finish(){
-  clearTimeout(giveUp);giveUp=null;running=false;
+  running=false;
   document.getElementById("rerun").disabled=false;
   restoreStorage();
-  if(frame){frame.remove();frame=null}
+  dropFrames();
+  // opt-in hook so a script can run this page and read the outcome: ?report
+  if(location.search.indexOf("report")>=0){
+    try{fetch("__result",{method:"POST",body:JSON.stringify(ALL)})}catch(e){}
+  }
 }
-window.addEventListener("message",e=>{
-  if(!e.data||!e.data.liftsyncTest)return;
-  lastResults=e.data.results;
-  finish();
-  render();
-});
+
+function loadApp(){
+  return new Promise((res,rej)=>{
+    const f=document.createElement("iframe");
+    frames.push(f);
+    const bail=setTimeout(()=>rej(new Error("index.html 載入逾時")),15000);
+    f.addEventListener("load",()=>{clearTimeout(bail);res(f)});
+    f.src="index.html?t="+Date.now()+"-"+Math.random();   // never a cached copy
+    document.body.appendChild(f);
+  });
+}
+// The probe has to run inside the app's window: the app's top-level let/const bindings
+// never become properties of globalThis, so there is no reaching them from out here.
+function probe(f,code,ms){
+  return new Promise((res,rej)=>{
+    const bail=setTimeout(()=>{window.removeEventListener("message",on);rej(new Error("沒有回報結果"))},ms||25000);
+    function on(e){
+      if(!e.data||!e.data.liftsyncTest)return;
+      clearTimeout(bail);window.removeEventListener("message",on);res(e.data.results);
+    }
+    window.addEventListener("message",on);
+    let doc=null;
+    try{doc=f.contentDocument}catch(err){}
+    if(!doc||!doc.body){clearTimeout(bail);window.removeEventListener("message",on);rej(new Error("no-access"));return}
+    // surface a syntax error in the injected script instead of just timing out
+    try{f.contentWindow.addEventListener("error",ev=>{
+      clearTimeout(bail);window.removeEventListener("message",on);
+      rej(new Error((ev.message||"script error")+" @"+(ev.lineno||"?")));
+    })}catch(err){}
+    const bridge=doc.createElement("script");
+    bridge.textContent="window.G2=G;";          // G is the app's muscle-group lookup
+    doc.body.appendChild(bridge);
+    const sc=doc.createElement("script");
+    sc.textContent=code;
+    doc.body.appendChild(sc);
+  });
+}
+
+const REPORT='const R=[];const ok=(n,c,d)=>R.push({group:GRP,name:n,pass:!!c,detail:d==null?"":String(d)});'+
+             'const done=()=>parent.postMessage({liftsyncTest:true,results:R},"*");';
+
+function note(group,name,pass,detail){ALL.push({group,name,pass,detail:detail==null?"":String(detail)})}
+
+/* ---------------- phase 1: the app, driven through its own UI ---------------- */
+async function phaseMain(){
+  const f=await loadApp();
+  try{ ALL.push(...await probe(f,document.getElementById("suite").textContent)); }
+  finally{ f.remove(); frames=frames.filter(x=>x!==f); }   // a live app keeps writing storage
+}
+
+/* ---------------- phase 2: cold starts, with storage seeded first ---------------- */
+const COLD=[
+  {
+    name:"冷啟動：舊版 ironlog 資料",
+    seed(){
+      localStorage.clear();
+      localStorage.setItem("ironlog-v1",JSON.stringify({ver:3,sample:false,
+        workouts:[{date:"2026-05-05",exercises:[{name:"臥推",sets:[{kg:60,reps:5}]}]}],
+        bodyweight:[],custom:[],routines:[],settings:{rest:90,exRest:{}}}));
+      localStorage.setItem("ironlog-v1-tab","progress");
+    },
+    code:`const GRP="冷啟動：改名前的舊資料";${'$'}{REPORT}
+      ok("讀得到 ironlog-v1 的紀錄",S.workouts.length===1&&S.workouts[0].exercises[0].name==="臥推",
+         JSON.stringify(S.workouts.map(w=>w.date)));
+      ok("沒有退回範例資料",S.sample!==true);
+      ok("順手補上了 id",!!S.workouts[0].id,S.workouts[0].id);
+      ok("記得上次看的分頁",!${'$'}("tab-progress").hidden);
+      done();`
+  },
+  {
+    name:"冷啟動：結構壞掉的資料",
+    seed(){
+      localStorage.clear();
+      localStorage.setItem("liftsync-v1",JSON.stringify({ver:3,sample:false,
+        workouts:[{date:"2026-05-05",exercises:[null,{name:"臥推",sets:[null,{kg:60,reps:5}]}]},
+                  null,{exercises:[]},{date:"亂寫"}],
+        routines:[null,{id:"rr",name:"壞的",exercises:[null,{name:"臥推",sets:2}]}],
+        bodyweight:[null,{date:"2026-05-01",kg:70},{date:"2026-05-01",kg:71}],
+        custom:{},settings:null,draft:{exercises:"亂寫"}}));
+    },
+    code:`const GRP="冷啟動：結構壞掉的資料";${'$'}{REPORT}
+      ok("App 有啟動起來",typeof S==="object"&&!!S);
+      ok("只留下能用的那筆訓練",S.workouts.length===1,JSON.stringify(S.workouts.map(w=>w.date)));
+      ok("壞掉的動作被濾掉",S.workouts[0].exercises.length===1);
+      ok("壞掉的組被濾掉",S.workouts[0].exercises[0].sets.length===1);
+      ok("壞掉的範本被濾掉",S.routines.length===1&&S.routines[0].exercises.length===1);
+      ok("同日體重只留一筆",S.bodyweight.length===1&&S.bodyweight[0].kg===71);
+      ok("custom 變成陣列",Array.isArray(S.custom));
+      ok("壞掉的 draft 被丟掉",S.draft===null);
+      ok("畫面真的畫出來了",document.querySelectorAll("#routines .rcard").length===1);
+      done();`
+  },
+  {
+    name:"冷啟動：完全不是 JSON",
+    seed(){localStorage.clear();localStorage.setItem("liftsync-v1","{{{這不是 JSON")},
+    code:`const GRP="冷啟動：完全不是 JSON";${'$'}{REPORT}
+      ok("退回範例資料而不是白畫面",Array.isArray(S.workouts)&&S.workouts.length>0,String(S.workouts.length));
+      ok("範本也畫出來了",document.querySelectorAll("#routines .rcard").length>0);
+      done();`
+  },
+  {
+    name:"冷啟動：接回還在跑的休息",
+    seed(){
+      localStorage.clear();
+      localStorage.setItem("liftsync-v1",JSON.stringify({ver:3,sample:false,workouts:[],bodyweight:[],
+        custom:[],routines:[],settings:{rest:90,exRest:{}},
+        draft:{date:"2026-05-05",exercises:[{name:"臥推",sets:[{kg:60,reps:5,done:true}]}]}}));
+      localStorage.setItem("liftsync-v1-rest",JSON.stringify({end:Date.now()+65500,total:90,alerted:false}));
+    },
+    code:`const GRP="冷啟動：接回還在跑的休息";${'$'}{REPORT}
+      ok("倒數接了回來",restEnd>Date.now(),String(restEnd-Date.now()));
+      ok("剩餘秒數正確",/^01:0[3-6]$/.test(${'$'}("rest").textContent),${'$'}("rest").textContent);
+      done();`
+  },
+  {
+    name:"冷啟動：太久以前的休息",
+    seed(){
+      localStorage.clear();
+      localStorage.setItem("liftsync-v1",JSON.stringify({ver:3,sample:false,workouts:[],bodyweight:[],
+        custom:[],routines:[],settings:{rest:90,exRest:{}},
+        draft:{date:"2026-05-05",exercises:[]}}));
+      localStorage.setItem("liftsync-v1-rest",JSON.stringify({end:Date.now()-20*60*1000,total:90,alerted:false}));
+    },
+    code:`const GRP="冷啟動：太久以前的休息";${'$'}{REPORT}
+      ok("不會復活",restEnd===0,String(restEnd));
+      ok("存檔也清掉了",localStorage.getItem("liftsync-v1-rest")===null);
+      ok("顯示預設休息時間而不是 NaN",${'$'}("rest").textContent.indexOf("NaN")<0,${'$'}("rest").textContent);
+      done();`
+  }
+];
+
+async function phaseCold(){
+  for(const c of COLD){
+    try{
+      c.seed();
+      const f=await loadApp();
+      try{ ALL.push(...await probe(f,c.code.replace(/\$\{REPORT\}/g,REPORT))); }
+      finally{ f.remove(); frames=frames.filter(x=>x!==f); }
+    }catch(e){
+      note(c.name,"這個情境跑不起來",false,(e&&e.message)||e);
+    }
+  }
+}
+
+/* ---------------- phase 3: the service worker, registered for real ---------------- */
+async function phaseSW(){
+  const GRP="Service worker（真的註冊一次）";
+  const ok=(n,c,d)=>note(GRP,n,!!c,d);
+  if(!navigator.serviceWorker||!window.caches){ok("這個環境沒有 service worker（略過）",true,"skipped");return}
+  try{
+    for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();
+    for(const k of await caches.keys())await caches.delete(k);
+    await caches.open("liftsync-stale-for-test");      // activation should sweep this away
+
+    const src=await (await fetch("sw.js?v="+Date.now(),{cache:"no-store"})).text();
+    const ver=(src.match(/VERSION\s*=\s*"([^"]+)"/)||[])[1];
+    const shell=((src.match(/const SHELL\s*=\s*\[([\s\S]*?)\];/)||[,""])[1].match(/"[^"]+"/g)||[])
+      .map(q=>q.slice(1,-1));
+    ok("sw.js 讀得到版本號",!!ver,ver);
+    ok("預快取清單解析得出來",shell.length>0,shell.length+" 個");
+
+    // The app iframes in the earlier phases already registered sw.js and clients.claim()
+    // took over this page too, so plain register("sw.js") would just hand back that
+    // existing worker — no install, no activate, nothing to check. A distinct script URL
+    // (same file, same "/" scope) forces a real install and activation.
+    const cap=(pr,ms,what)=>Promise.race([pr,
+      new Promise(r=>setTimeout(()=>r("__timeout:"+what),ms))]);
+    const reg=await navigator.serviceWorker.register("sw.js?ci="+Date.now());
+    // a failed install leaves no active worker, and ready would then never settle
+    const rdy=await cap(navigator.serviceWorker.ready,10000,"ready");
+    ok("安裝沒有卡住",rdy!=="__timeout:ready",
+       rdy==="__timeout:ready"?"serviceWorker.ready 逾時，多半是預快取清單有檔案抓不到":"");
+    for(let i=0;i<120&&!(reg.active&&reg.active.state==="activated");i++)await new Promise(r=>setTimeout(r,50));
+    ok("安裝並啟用成功",!!(reg.active&&reg.active.state==="activated"),reg.active&&reg.active.state);
+
+    let keys=await caches.keys();
+    for(let i=0;i<40&&keys.includes("liftsync-stale-for-test");i++){
+      await new Promise(r=>setTimeout(r,50));keys=await caches.keys();
+    }
+    ok("建立了這個版本的快取",keys.includes(ver),keys.join(",")+" ← 期望 "+ver);
+    ok("舊版本的快取被清掉",!keys.includes("liftsync-stale-for-test"),keys.join(","));
+
+    const c=await caches.open(ver);
+    const missing=[];
+    for(const u of shell)if(!(await c.match(u)))missing.push(u);
+    ok("預快取的檔案全部都在",missing.length===0,missing.join(", ")||(shell.length+" 個都在"));
+
+    for(let i=0;i<60&&!navigator.serviceWorker.controller;i++)await new Promise(r=>setTimeout(r,50));
+    ok("已經接管這個頁面",!!navigator.serviceWorker.controller);
+    // a URL the server does not have, but the cache does — only the SW can answer it
+    await c.put("./__sw_probe.txt",new Response("from-cache",{headers:{"content-type":"text/plain"}}));
+    const direct=await fetch("./__sw_probe.txt");
+    const body=await direct.text();
+    ok("離線時會從快取回應",body==="from-cache",body.slice(0,40));
+
+    ok("有處理點擊通知",/addEventListener\("notificationclick"/.test(src));
+    // the worker answers same-origin GETs from cache first, so ask for a URL it has
+    // never seen — this check is about the file on the server, not the cached copy
+    const page=await (await fetch("index.html?v="+Date.now(),{cache:"no-store"})).text();
+    const tag=(page.match(/<!--\s*LiftSync v([\d.]+)\s*-->/)||[])[1];
+    ok("index.html 的版本註記跟 sw.js 一致",ver==="liftsync-"+tag,"index.html="+tag+" / sw.js="+ver);
+    ok("通知圖示有進預快取",shell.some(u=>u.indexOf("icon-96")>=0)||shell.some(u=>u.indexOf("icon-192")>=0),
+       shell.filter(u=>u.indexOf("icon")>=0).join(", "));
+  }catch(e){
+    ok("service worker 測試拋出例外",false,(e&&e.message)||e);
+  }finally{
+    try{
+      for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();
+      for(const k of await caches.keys())await caches.delete(k);
+    }catch(e){}
+  }
+}
+
+function render(){
+  const pass=ALL.filter(r=>r.pass).length, fail=ALL.length-pass;
+  tally.innerHTML=`<span class="p">${pass} 通過</span>　<span class="${fail?"f":""}">${fail} 失敗</span>`;
+  document.title=(fail?`✗ ${fail} 失敗`:`✓ ${pass} 通過`)+" · LiftSync 測試";
+  out.replaceChildren();
+  let group=null, ul=null;
+  for(const r of ALL){
+    if(onlyFail&&r.pass)continue;
+    if(r.group!==group){
+      group=r.group;
+      const h=document.createElement("h2");h.textContent=group;out.append(h);
+      ul=document.createElement("ul");out.append(ul);
+    }
+    const li=document.createElement("li");li.className=r.pass?"ok":"no";
+    const tag=document.createElement("span");tag.className="tag";tag.textContent=r.pass?"PASS":"FAIL";
+    const body=document.createElement("span");body.textContent=r.name;
+    if(r.detail){
+      const why=document.createElement("span");why.className="why";why.textContent=r.detail;body.append(why);
+    }
+    li.append(tag,body);ul.append(li);
+  }
+  if(onlyFail&&!fail){
+    const p=document.createElement("p");p.className="note";p.textContent="沒有失敗的項目。";out.append(p);
+  }
+}
 
 async function run(){
   if(running)return;                 // one run at a time, or the stash gets clobbered
   running=true;document.getElementById("rerun").disabled=true;
-  clearTimeout(giveUp);giveUp=null;
-  lastResults=null;onlyFail=false;
+  onlyFail=false;ALL.length=0;
   tally.textContent="執行中…";out.replaceChildren();
   // Housekeeping only — a stale service worker would serve a cached index.html and the
   // suite would quietly test yesterday's app. It must never be able to block the run,
@@ -716,32 +1015,23 @@ async function run(){
     })());
   }catch(e){}
   stashStorage();
-  if(frame)frame.remove();
-  frame=document.createElement("iframe");
-  frame.src="index.html?test="+Date.now();   // bypass any cached copy
-  frame.addEventListener("load",()=>{
-    let doc;
-    try{doc=frame.contentDocument}catch(err){doc=null}
-    if(!doc||!doc.body){
-      howto.style.borderLeftColor="var(--fail)";
-      tally.innerHTML='<span class="f">無法讀取 index.html</span>';
-      finish();return;
+  dropFrames();
+  const phases=[["App 本體",phaseMain],["冷啟動",phaseCold],["Service worker",phaseSW]];
+  for(const [label,fn] of phases){
+    try{ await fn(); }
+    catch(e){
+      if((e&&e.message)==="no-access"){
+        howto.style.borderLeftColor="var(--fail)";
+        tally.innerHTML='<span class="f">無法讀取 index.html</span>';
+        finish();return;
+      }
+      note(label,"這個階段沒有跑完",false,(e&&e.message)||e);
     }
     howto.classList.add("hide");
-    // G is taken by the app (muscle group lookup); the suite calls it G2
-    const bridge=doc.createElement("script");
-    bridge.textContent="window.G2=G;";
-    doc.body.appendChild(bridge);
-    const s=doc.createElement("script");
-    s.textContent=document.getElementById("suite").textContent;
-    doc.body.appendChild(s);
-    giveUp=setTimeout(()=>{
-      if(lastResults)return;
-      tally.innerHTML='<span class="f">測試沒有回報結果</span>';
-      finish();
-    },20000);
-  });
-  document.body.appendChild(frame);
+    render();
+  }
+  finish();
+  render();
 }
 
 document.getElementById("rerun").addEventListener("click",run);
