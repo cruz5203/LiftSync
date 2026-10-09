@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LiftSync 測試</title>
+<style>
+:root{color-scheme:light dark;
+  --bg:#eef0ee;--surface:#fff;--line:#cfd5d2;--fg:#16201d;--muted:#5b6762;
+  --pass:#2f8f4e;--fail:#d23a2e;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111614;--surface:#1a211e;--line:#33403b;--fg:#e8edea;--muted:#9aa8a2}}
+*{box-sizing:border-box}
+body{margin:0;padding:20px 16px 60px;background:var(--bg);color:var(--fg);
+  font:15px/1.5 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:1.5rem;margin:0}
+.sub{color:var(--muted);font-size:.88rem;margin:0}
+.bar{position:sticky;top:0;z-index:2;background:var(--surface);border:1px solid var(--line);
+  border-radius:10px;padding:12px 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.tally{font-family:var(--mono);font-size:1.1rem;font-weight:600}
+.tally .p{color:var(--pass)}.tally .f{color:var(--fail)}
+button{font:inherit;font-weight:700;border:1px solid var(--line);background:var(--bg);
+  color:var(--fg);border-radius:8px;padding:8px 14px;cursor:pointer}
+.note{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--muted);
+  border-radius:8px;padding:12px 14px;font-size:.88rem;color:var(--muted)}
+.note code{font-family:var(--mono);font-size:.85em;background:var(--bg);padding:1px 5px;border-radius:4px}
+.note b{color:var(--fg)}
+h2{font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  margin:18px 0 6px;font-weight:700}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+li{display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:baseline;
+  padding:6px 10px;background:var(--surface);border:1px solid var(--line);border-radius:7px;font-size:.9rem}
+li .tag{font-family:var(--mono);font-size:.72rem;font-weight:700;letter-spacing:.06em}
+li.ok .tag{color:var(--pass)}li.no{border-color:var(--fail)}li.no .tag{color:var(--fail)}
+li .why{display:block;color:var(--muted);font-family:var(--mono);font-size:.76rem;
+  margin-top:3px;word-break:break-all}
+.hide{display:none}
+iframe{position:fixed;left:-9999px;top:0;width:430px;height:900px;border:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>LiftSync 測試</h1>
+  <p class="sub">在 iframe 裡載入真正的 <code>index.html</code> 並操作它，不是測一份副本 —— 改了 App 之後直接重新整理這一頁就會重跑。</p>
+
+  <div class="bar">
+    <span class="tally" id="tally">執行中…</span>
+    <button type="button" id="rerun">重跑</button>
+    <button type="button" id="onlyfail">只看失敗</button>
+  </div>
+
+  <div class="note" id="howto">
+    <b>要用網頁伺服器開啟。</b>直接雙擊這個檔案的話，瀏覽器不允許它讀取 iframe 裡的
+    <code>index.html</code>。在這個資料夾執行 <code>python -m http.server 8000</code>，
+    然後開 <code>http://localhost:8000/test.html</code>。
+  </div>
+
+  <div class="note">
+    測試會把 <b>localStorage 的內容先備份、跑完還原</b>，所以不會動到你的訓練紀錄。
+    不過還是建議在本機跑，不要在已經部署、裝在手機上的網址跑。
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<!-- The suite runs inside the app's own window, so it can reach the top-level
+     let/const bindings that never become properties of globalThis. type="text/plain"
+     keeps it inert here; the runner injects it as a real script after the app boots. -->
+<script type="text/plain" id="suite">
+(async()=>{
+const R=[];let group="";
+const G=n=>{group=n};
+const ok=(name,cond,detail)=>R.push({group,name,pass:!!cond,detail:detail==null?"":String(detail)});
+const settle=()=>new Promise(r=>setTimeout(r,0));
+
+/* ---- stubs: capture what the app would emit, instead of emitting it ---- */
+let buzzes=0,beeped=0,hiddenFlag=false,notified=null;
+const notes=[];
+beep=()=>{beeped++};
+navigator.vibrate=()=>{buzzes++;return true};
+Object.defineProperty(window,"Notification",{configurable:true,
+  value:Object.assign(function(){},{permission:"granted",requestPermission:async()=>"granted"})});
+Object.defineProperty(navigator,"serviceWorker",{configurable:true,value:{ready:Promise.resolve({
+  showNotification:(t,o)=>{notified={t,o};notes.push({close(){}});return Promise.resolve()},
+  getNotifications:()=>Promise.resolve(notes.splice(0))})}});
+Object.defineProperty(document,"hidden",{configurable:true,get:()=>hiddenFlag});
+
+const RK=KEY+"-rest";
+const card=i=>document.querySelectorAll("#hist button.hitem")[i];
+const fresh=()=>{S=normalize(seed());S.sample=false;wEdit=null;editing=null;stopRest();renderAll();};
+const typeName=v=>{$("c-name").value=v;$("c-name").dispatchEvent(new Event("input"))};
+const submitCustom=()=>$("custom-form").dispatchEvent(new Event("submit",{cancelable:true}));
+const openManage=()=>{renderPicker();if($("custom-box").hidden)$("custom-manage").click()};
+const firstRow=()=>$("custom-list").querySelector("li").querySelectorAll("button");
+const importFile=async obj=>{
+  const dt=new DataTransfer();
+  dt.items.add(new File([JSON.stringify(obj)],"backup.json",{type:"application/json"}));
+  $("import-file").files=dt.files;
+  $("import-file").dispatchEvent(new Event("change"));
+  for(let i=0;i<40&&$("import-confirm").hidden;i++)await settle();
+};
+
+try{
+
+/* ============================ normalize ============================ */
+G("normalize：修補載入與匯入的資料");
+{
+  const n=normalize({workouts:[
+    {date:"2026-09-01",exercises:[{name:"臥推",sets:[{kg:60,reps:5}]}]},
+    {date:"2026-08-30",exercises:[{name:"硬舉",sets:[{kg:100,reps:3}]}]},
+    {date:"2026-08-28",exercises:[{name:"臥推",sets:[{kg:55,reps:5}]}]}]});
+  ok("補上缺少的 id",n.workouts.every(w=>w.id)&&new Set(n.workouts.map(w=>w.id)).size===3,
+     n.workouts.map(w=>w.id).join(","));
+}
+{
+  const n=normalize({workouts:[{id:"x",date:"2026-01-01",exercises:[]},{id:"x",date:"2026-01-02",exercises:[]}]});
+  ok("拆開重複的 id",n.workouts[0].id!==n.workouts[1].id,n.workouts.map(w=>w.id).join(","));
+}
+{
+  const n=normalize({workouts:[],custom:{},routines:{},bodyweight:{}});
+  ok("非陣列的 custom 轉成陣列",Array.isArray(n.custom));
+  ok("非陣列的 routines 轉成陣列",Array.isArray(n.routines));
+  ok("非陣列的 bodyweight 轉成陣列",Array.isArray(n.bodyweight));
+  S=n;S.sample=false;renderAll();
+  ok("轉換後仍能 render",allEx().length>0);
+}
+{
+  const n=normalize({workouts:[
+    {date:"2026-09-01",exercises:[{name:"臥推",sets:[{kg:60,reps:5}]}]},
+    {exercises:[{name:"硬舉",sets:[]}]},
+    {date:"亂寫",exercises:[]}]});
+  ok("丟掉沒有合法日期的訓練",n.workouts.length===1,n.workouts.map(w=>w.date).join(","));
+  S=n;S.sample=false;renderAll();show("history");
+  ok("紀錄頁照常顯示",document.querySelectorAll("#hist button.hitem").length===1);
+}
+{
+  const n=normalize({workouts:[{date:"2026-09-01"},{date:"2026-08-30",exercises:[{name:"臥推"}]}],
+    routines:[null,{id:"rx"},{name:"沒有 id",exercises:[]}],draft:{exercises:"亂寫"}});
+  ok("補上缺少的 exercises 陣列",n.workouts.every(w=>Array.isArray(w.exercises)));
+  ok("補上缺少的 sets 陣列",n.workouts[1].exercises.every(e=>Array.isArray(e.sets)));
+  ok("丟掉壞掉的範本",n.routines.length===1&&n.routines[0].id==="rx",JSON.stringify(n.routines));
+  ok("丟掉壞掉的進行中訓練",n.draft===null);
+}
+{
+  const n=normalize({workouts:[],bodyweight:[
+    {date:"2026-08-01",kg:70},{date:"2026-08-01",kg:71},{date:"2026-08-02",kg:72},null,{date:"2026-08-03"}]});
+  ok("同一天的體重只留一筆",n.bodyweight.length===2,JSON.stringify(n.bodyweight));
+  ok("留下的是後寫入的那筆",n.bodyweight.find(b=>b.date==="2026-08-01").kg===71);
+}
+
+/* ============================ 修改訓練紀錄 ============================ */
+G("修改訓練紀錄");
+fresh();show("history");
+ok("每一筆都是可點的卡片",document.querySelectorAll("#hist button.hitem").length===S.workouts.length);
+{
+  const id=S.workouts[1].id, before=JSON.stringify(S.workouts[1]);
+  card(1).click();
+  ok("點了會打開修改畫面",!$("w-edit").hidden&&$("hist-head").hidden);
+  ok("帶入原本的日期",$("w-date").value===S.workouts[1].date,$("w-date").value);
+  ok("列出全部動作",$("w-list").querySelectorAll(".panel.ex").length===S.workouts[1].exercises.length);
+  ok("動作選擇面板移進修改畫面",$("w-picker-slot").contains($("picker-panel")));
+  const i=$("w-list").querySelector("tbody input");i.value="123.5";i.dispatchEvent(new Event("input"));
+  ok("按儲存前不會動到資料",JSON.stringify(S.workouts.find(w=>w.id===id))===before);
+  $("w-save").click();
+  ok("儲存寫回正確那一筆",S.workouts.find(w=>w.id===id).exercises[0].sets[0].kg===123.5);
+  ok("儲存後關閉修改畫面",$("w-edit").hidden&&!$("hist-head").hidden);
+}
+{
+  const id=S.workouts[0].id, before=JSON.stringify(S.workouts[0]);
+  card(0).click();
+  const i=$("w-list").querySelector("tbody input");i.value="999";i.dispatchEvent(new Event("input"));
+  $("w-cancel").click();
+  ok("取消完全不動原紀錄",JSON.stringify(S.workouts.find(w=>w.id===id))===before);
+}
+{
+  card(0).click();
+  $("w-date").value="2099-01-01";$("w-date").dispatchEvent(new Event("change"));
+  ok("擋下未來的日期",wEdit.date!=="2099-01-01",wEdit.date);
+  const today=ymd(new Date());
+  $("w-date").value=today;$("w-date").dispatchEvent(new Event("change"));
+  $("w-save").click();
+  ok("改日期後重新排序",S.workouts.every((w,i)=>i===0||S.workouts[i-1].date>=w.date));
+}
+{
+  const n=S.workouts.length, id=S.workouts[1].id;
+  card(1).click();
+  $("w-delete").click();
+  ok("刪除要先確認",!$("w-del-confirm").hidden);
+  $("w-del-yes").click();
+  ok("只刪掉那一筆",S.workouts.length===n-1&&!S.workouts.some(w=>w.id===id),n+" -> "+S.workouts.length);
+}
+{
+  card(0).click();
+  const n=wEdit.exercises.length;
+  addEx("腿推機");
+  ok("可以加入動作",wEdit.exercises.length===n+1);
+  $("w-save").click();
+  ok("沒填次數的新動作不會存進去",!S.workouts[0].exercises.some(e=>e.name==="腿推機"));
+}
+{
+  card(0).click();
+  const name=wEdit.exercises[0].name, n=wEdit.exercises.length;
+  wEdit.exercises[0].sets.forEach(st=>st.reps="");
+  $("w-save").click();
+  ok("整個動作被清空時擋下來",!$("w-edit").hidden);
+  ok("訊息指出是哪個動作",$("toast").textContent.includes(name),$("toast").textContent);
+  ok("沒有偷偷刪掉那個動作",S.workouts[0].exercises.length===n);
+  wEdit.exercises[0].sets[0].reps=5;$("w-save").click();
+  ok("補上次數就能存",$("w-edit").hidden);
+}
+{
+  card(0).click();
+  const d=wEdit.date;
+  $("w-cancel").click();
+  $("w-date").value="";$("w-date").dispatchEvent(new Event("change"));
+  ok("關閉後才送達的 change 不會爆掉",true);
+  card(0).click();
+  ok("修改畫面還能正常開",wEdit&&wEdit.date===d);
+  $("w-cancel").click();
+}
+
+/* ============================ 數值檢查 ============================ */
+G("數值檢查");
+fresh();show("history");
+{
+  card(0).click();
+  const before=JSON.stringify(S.workouts[0]);
+  wEdit.exercises[0].sets[0].reps=-5;$("w-save").click();
+  ok("擋下負的次數",!$("w-edit").hidden&&$("toast").textContent.includes("次數"),$("toast").textContent);
+  ok("擋下時什麼都沒存",JSON.stringify(S.workouts[0])===before);
+  wEdit.exercises[0].sets[0].reps=0;$("w-save").click();
+  ok("擋下 0 次",!$("w-edit").hidden);
+  wEdit.exercises[0].sets[0].reps=5;wEdit.exercises[0].sets[0].kg=-5;$("w-save").click();
+  ok("擋下負的重量",!$("w-edit").hidden&&$("toast").textContent.includes("重量"),$("toast").textContent);
+  wEdit.exercises[0].sets[0].kg=60;$("w-save").click();
+  ok("合理的數字存得進去",$("w-edit").hidden);
+}
+{
+  card(0).click();
+  const n=S.workouts[0].exercises.length;
+  wEdit.exercises[0].sets.push({kg:9999,reps:""});
+  $("w-save").click();
+  ok("空白列不會卡住儲存",$("w-edit").hidden&&S.workouts[0].exercises.length===n);
+}
+{
+  show("today");startRoutine(S.routines[0]);
+  S.draft.exercises[0].sets=[{kg:100,reps:-3,done:true},{kg:9999,reps:5,done:false}];
+  $("finish").click();
+  ok("完成訓練也擋負的次數",!!S.draft&&$("toast").textContent.includes("次數"),$("toast").textContent);
+  S.draft.exercises[0].sets[0].reps=5;
+  $("finish").click();
+  ok("沒打勾的亂數字不影響完成訓練",S.draft===null);
+}
+
+/* ============================ 自訂動作 ============================ */
+G("自訂動作");
+fresh();show("today");startRoutine(S.routines[0]);
+ok("沒有自訂動作時不顯示管理按鈕",$("custom-manage").hidden);
+{
+  $("custom-open").click();typeName("測試動作甲");
+  $("c-g").value="胸";$("c-eq").value="槓鈴";submitCustom();
+  ok("新增進動作庫",S.custom.length===1&&S.custom[0].name==="測試動作甲",JSON.stringify(S.custom));
+  ok("同時加進今天的訓練",S.draft.exercises.some(e=>e.name==="測試動作甲"));
+  ok("新增後出現管理按鈕",!$("custom-manage").hidden);
+}
+{
+  $("custom-open").click();typeName("臥推");submitCustom();
+  ok("擋下與內建動作同名",!S.custom.some(x=>x.name==="臥推"));
+  closeCustomForm();
+}
+{
+  S.draft.exercises.find(e=>e.name==="測試動作甲").sets=[{kg:60,reps:5,done:true}];
+  S.settings.exRest["測試動作甲"]=150;
+  $("finish").click();
+  S.routines.push({id:"rt",name:"測試範本",exercises:[{name:"測試動作甲",sets:3}]});save();
+  const pr=bests()["測試動作甲"].e;
+  openManage();
+  ok("管理清單列出自訂動作",!$("custom-box").hidden&&$("custom-list").children.length===1);
+  ok("顯示用到的筆數",$("custom-list").querySelector("li").textContent.includes("1 筆"));
+  firstRow()[0].click();
+  ok("編輯表單帶入現有內容",$("c-name").value==="測試動作甲"&&$("c-g").value==="胸"&&$("c-eq").value==="槓鈴");
+  ok("按鈕變成儲存修改",$("c-submit").textContent==="儲存修改");
+  ok("先說明會影響幾筆",$("c-hint").textContent.includes("1 筆"),$("c-hint").textContent);
+  typeName("測試動作乙");$("c-g").value="肩";submitCustom();
+  ok("動作庫更新",S.custom[0].name==="測試動作乙"&&S.custom[0].g==="肩");
+  ok("過去的紀錄跟著改名",S.workouts[0].exercises.some(e=>e.name==="測試動作乙"));
+  ok("沒有留下孤兒",!S.workouts.some(w=>w.exercises.some(e=>e.name==="測試動作甲")));
+  ok("範本跟著改名",S.routines.find(r=>r.id==="rt").exercises[0].name==="測試動作乙");
+  ok("休息設定跟著搬家",S.settings.exRest["測試動作乙"]===150&&S.settings.exRest["測試動作甲"]===undefined);
+  ok("個人紀錄接得上",Math.abs(bests()["測試動作乙"].e-pr)<1e-9&&!bests()["測試動作甲"]);
+  ok("部位改變反映在查詢上",G2("測試動作乙")==="肩",G2("測試動作乙"));
+}
+{
+  openManage();firstRow()[0].click();
+  typeName("臥推");
+  ok("提示指出名字已被佔用",$("c-hint").textContent.includes("已經有"),$("c-hint").textContent);
+  submitCustom();
+  ok("送出也被擋下",S.custom[0].name==="測試動作乙");
+  typeName("測試動作乙");submitCustom();
+  ok("名字沒改也能存",S.custom[0].name==="測試動作乙"&&$("custom-form").hidden);
+}
+{
+  openManage();
+  const n=S.workouts.length;
+  firstRow()[1].click();
+  ok("移除前說明後果",!$("c-del-confirm").hidden&&$("c-del-msg").textContent.includes("留著"),$("c-del-msg").textContent);
+  ok("並說明可以加回來",$("c-del-msg").textContent.includes("再加一次"));
+  $("c-del-yes").click();
+  ok("從動作庫移除",!allEx().some(x=>x.name==="測試動作乙"));
+  ok("訓練紀錄留著",S.workouts.length===n&&S.workouts.some(w=>w.exercises.some(e=>e.name==="測試動作乙")));
+  ok("範本也留著",S.routines.find(r=>r.id==="rt").exercises[0].name==="測試動作乙");
+  ok("沒有自訂動作時收起管理區",$("custom-manage").hidden&&$("custom-box").hidden);
+}
+{
+  show("today");startRoutine(S.routines[0]);
+  $("custom-open").click();typeName("測試動作乙");
+  ok("提示說會接回舊紀錄",!$("c-hint").hidden&&$("c-hint").textContent.includes("接回"),$("c-hint").textContent);
+  $("c-g").value="胸";$("c-eq").value="槓鈴";submitCustom();
+  ok("可以用同樣的名字加回來",S.custom.some(x=>x.name==="測試動作乙"));
+  ok("加回來時也加進今天的訓練",S.draft.exercises.some(e=>e.name==="測試動作乙"));
+  ok("提示訊息講明接回幾筆",$("toast").textContent.includes("接回"),$("toast").textContent);
+  ok("舊紀錄接回動作庫",G2("測試動作乙")==="胸",G2("測試動作乙"));
+}
+{
+  openManage();firstRow()[1].click();
+  ok("排定移除",!$("c-del-confirm").hidden);
+  firstRow()[0].click();
+  ok("改去按編輯就取消移除",$("c-del-confirm").hidden);
+  const n=S.custom.length;
+  typeName("測試動作丙");submitCustom();
+  ok("改名有生效",S.custom[0].name==="測試動作丙");
+  ok("而且什麼都沒被移除",S.custom.length===n,n+" -> "+S.custom.length);
+}
+{
+  fresh();show("today");startRoutine(S.routines[0]);
+  S.custom=[{name:"甲",g:"胸",eq:"器械",custom:true},{name:"乙",g:"胸",eq:"器械",custom:true}];
+  S.settings.exRest["甲"]=120;S.settings.exRest["乙"]=200;
+  S.workouts[0].exercises.push({name:"甲",sets:[{kg:50,reps:8}]},{name:"乙",sets:[{kg:60,reps:6}]});
+  S.routines[0].exercises.push({name:"甲",sets:3},{name:"乙",sets:4});
+  S.draft.exercises.push({name:"甲",sets:[{kg:50,reps:8,done:true}]},{name:"乙",sets:[{kg:60,reps:6,done:true}]});
+  S.custom=S.custom.filter(x=>x.name!=="甲");
+  renameEverywhere("乙","甲");
+  const w=S.workouts[0].exercises.filter(e=>e.name==="甲");
+  ok("改名撞名時合併成一個動作",w.length===1,String(w.length));
+  ok("兩邊的組都留著",w[0].sets.length===2,JSON.stringify(w[0].sets));
+  ok("範本的組數相加",S.routines[0].exercises.filter(e=>e.name==="甲")[0].sets===7);
+  ok("進行中的訓練也合併",S.draft.exercises.filter(e=>e.name==="甲").length===1);
+  ok("保留目標動作原本的休息設定",S.settings.exRest["甲"]===120&&S.settings.exRest["乙"]===undefined);
+  renameEverywhere("甲","丙");
+  ok("沒有撞名時就只是改名",S.workouts[0].exercises.filter(e=>e.name==="丙").length===1
+     &&!S.workouts[0].exercises.some(e=>e.name==="甲"));
+}
+
+/* ============================ 動作選擇面板的交接 ============================ */
+G("動作選擇面板在三個畫面之間交接");
+fresh();show("today");startRoutine(S.routines[0]);
+{
+  const n=S.draft.exercises.length;
+  show("history");const id=S.workouts[1].id;
+  card(1).click();
+  const i=$("w-list").querySelector("tbody input");i.value="123.5";i.dispatchEvent(new Event("input"));
+  ok("面板在修改紀錄畫面",$("w-picker-slot").contains($("picker-panel")));
+  show("today");
+  ok("切走不會丟掉修改中的內容",wEdit&&wEdit.id===id&&wEdit.exercises[0].sets[0].kg===123.5);
+  ok("面板交還給進行中的訓練",$("d-picker-slot").contains($("picker-panel")));
+  addEx("腿推機");
+  ok("這時加動作是加進今天的訓練",S.draft.exercises.length===n+1);
+  ok("不會跑進看不見的那筆紀錄",!wEdit.exercises.some(e=>e.name==="腿推機"));
+  show("history");
+  ok("切回來修改畫面還在",!$("w-edit").hidden&&$("w-list").querySelector("tbody input").value==="123.5");
+  $("w-save").click();
+  ok("來回之後還是存得進去",S.workouts.find(w=>w.id===id).exercises[0].sets[0].kg===123.5);
+}
+{
+  show("today");openEdit(S.routines[0]);
+  ok("面板交給範本編輯器",$("r-picker-slot").contains($("picker-panel")));
+  addEx("腿推機");
+  ok("這時加動作是加進範本",editing.exercises.some(e=>e.name==="腿推機"));
+  $("r-cancel").click();$("discard").click();$("discard-yes").click();
+}
+
+/* ============================ 體重 ============================ */
+G("體重紀錄");
+fresh();show("progress");
+{
+  const rows=$("bw-list").querySelectorAll("li");
+  ok("列出可修改的體重",rows.length>0,String(rows.length));
+  const live=rows[1], date=[...S.bodyweight].sort((a,b)=>b.date.localeCompare(a.date))[0].date;
+  const inp=$("bw-list").querySelector("input");
+  inp.value="69.9";inp.dispatchEvent(new Event("change"));
+  ok("改的數字有存進去",S.bodyweight.find(x=>x.date===date).kg===69.9);
+  ok("清單不會被重建",document.contains(live));
+  inp.value="5";inp.dispatchEvent(new Event("change"));
+  ok("擋下超出範圍的體重",S.bodyweight.find(x=>x.date===date).kg===69.9);
+  const n=S.bodyweight.length;
+  live.querySelector("button.iconbtn").click();
+  ok("正在等待的刪除點得到",S.bodyweight.length===n-1,n+" -> "+S.bodyweight.length);
+  ok("一次只刪一筆",S.bodyweight.length===n-1);
+}
+
+/* ============================ 匯入與清除 ============================ */
+G("匯入備份與清除範例");
+{
+  fresh();show("today");openEdit(S.routines[0]);
+  const keep=S.workouts.length;
+  await importFile({app:"liftsync",data:{ver:3,sample:false,workouts:[],bodyweight:[],custom:[],
+    routines:[{id:"r1",name:"匯入的範本",exercises:[{name:"臥推",sets:4}]}],settings:{rest:90,exRest:{}}}});
+  ok("認得備份檔",!$("import-confirm").hidden);
+  $("import-yes").click();
+  ok("匯入成功",S.workouts.length===0&&keep>0);
+  ok("關掉開著的範本編輯器",editing===null&&$("r-edit").hidden);
+  ok("匯入的範本沒有被舊資料蓋掉",S.routines[0].name==="匯入的範本"&&S.routines[0].exercises[0].sets===4,
+     JSON.stringify(S.routines));
+}
+{
+  fresh();S.sample=false;save();show("progress");
+  const keep=S.workouts.length, stash=localStorage.getItem(KEY);
+  const real=renderAll;
+  renderAll=()=>{throw new Error("boom")};
+  await importFile({app:"liftsync",data:{ver:3,workouts:[],bodyweight:[],custom:[],routines:[],settings:{}}});
+  $("import-yes").click();
+  renderAll=real;
+  ok("render 失敗時退回原本的資料",S.workouts.length===keep,keep+" -> "+S.workouts.length);
+  ok("而且沒有寫進 localStorage",localStorage.getItem(KEY)===stash);
+  ok("有告訴使用者",$("toast").textContent.includes("沒有匯入"),$("toast").textContent);
+  ok("確認框收起來",$("import-confirm").hidden);
+  renderAll();
+}
+{
+  await importFile({app:"liftsync",data:{workouts:[],custom:{},routines:{},bodyweight:{}}});
+  $("import-yes").click();
+  ok("奇怪的備份匯入後仍可運作",Array.isArray(S.custom)&&S.workouts.length===0);
+}
+{
+  fresh();show("history");card(0).click();startRest(90);
+  $("clear-sample").click();$("clear-yes").click();
+  ok("清除時放掉修改畫面",wEdit===null);
+  ok("清除時停掉休息計時",restEnd===0&&localStorage.getItem(RK)===null);
+  ok("清除後紀錄頁回到清單",!$("hist-head").hidden&&$("w-edit").hidden);
+}
+
+/* ============================ 休息計時 ============================ */
+G("休息計時與結束提醒");
+fresh();show("today");startRoutine(S.routines[0]);
+{
+  ok("提醒預設是關的",S.settings.alert===false&&$("rest-alert").getAttribute("aria-pressed")==="false");
+  ok("關閉時仍說明會震動",$("rest-alert-note").textContent.includes("震動"),$("rest-alert-note").textContent);
+  $("rest-alert").click();await settle();
+  ok("可以打開",S.settings.alert===true&&$("rest-alert").getAttribute("aria-pressed")==="true");
+  ok("打開後說明會通知",$("rest-alert-note").textContent.includes("跳通知"),$("rest-alert-note").textContent);
+}
+{
+  startRest(90);
+  const r=JSON.parse(localStorage.getItem(RK));
+  ok("把截止時刻存起來",r&&r.end>Date.now()&&r.total===90,JSON.stringify(r));
+  ok("畫面顯示倒數",$("rest").textContent==="01:30",$("rest").textContent);
+  $("rest-plus").click();
+  ok("+15 連存檔一起改",JSON.parse(localStorage.getItem(RK)).end>r.end);
+  $("rest-minus").click();
+  ok("-15 改回來",Math.abs(JSON.parse(localStorage.getItem(RK)).end-r.end)<1500);
+  $("rest-skip").click();
+  ok("略過會清掉存檔",localStorage.getItem(RK)===null&&restEnd===0);
+}
+{
+  restEnd=0;clearInterval(restIv);
+  localStorage.setItem(RK,JSON.stringify({end:Date.now()+65000,total:120,alerted:false}));
+  restoreRest();
+  ok("重開 App 從正確的秒數接續",$("rest").textContent==="01:05",$("rest").textContent);
+  ok("進度條也跟著對",parseFloat($("rest-fill").style.width)<60,$("rest-fill").style.width);
+  localStorage.setItem(RK,JSON.stringify({end:Date.now()-20*60*1000,total:90,alerted:false}));
+  restEnd=0;clearInterval(restIv);restoreRest();
+  ok("太久以前的休息不復活",restEnd===0&&localStorage.getItem(RK)===null);
+  const keep=S.draft;S.draft=null;
+  localStorage.setItem(RK,JSON.stringify({end:Date.now()+60000,total:90,alerted:false}));
+  restEnd=0;restoreRest();
+  ok("沒有進行中的訓練就不復活",restEnd===0&&localStorage.getItem(RK)===null);
+  S.draft=keep;
+}
+{
+  buzzes=0;beeped=0;notified=null;notes.length=0;hiddenFlag=true;
+  startRest(1);restEnd=Date.now()-10;restAlerted=false;tick();
+  ok("結束時震動一次",buzzes===1,String(buzzes));
+  ok("結束時響一聲",beeped===1,String(beeped));
+  ok("計時器進入結束狀態",document.querySelector(".restbox").classList.contains("ready"));
+  await settle();
+  ok("在背景時發出通知",notified&&notified.t.includes("休息結束"),notified&&notified.t);
+  ok("通知可以被後來的取代",notified.o.tag==="liftsync-rest");
+  hiddenFlag=false;document.dispatchEvent(new Event("visibilitychange"));
+  hiddenFlag=true;document.dispatchEvent(new Event("visibilitychange"));
+  hiddenFlag=false;document.dispatchEvent(new Event("visibilitychange"));
+  window.dispatchEvent(new Event("pageshow"));
+  tick();tick();
+  ok("回到 App 不會再震一次",buzzes===1,String(buzzes));
+  ok("也不會再響一次",beeped===1,String(beeped));
+  await settle();await settle();
+  ok("回到前景會清掉通知",notes.length===0,String(notes.length));
+  stopRest();
+}
+{
+  buzzes=0;beeped=0;notified=null;hiddenFlag=true;
+  startRest(1);restEnd=Date.now()-10*60*1000;restAlerted=false;tick();
+  await settle();
+  ok("太遲的提醒不響",beeped===0&&notified===null,"beeped="+beeped);
+  ok("太遲的提醒也不震",buzzes===0,String(buzzes));
+  stopRest();
+}
+{
+  buzzes=0;beeped=0;notified=null;hiddenFlag=false;
+  startRest(1);restEnd=Date.now()-10;restAlerted=false;tick();
+  await settle();
+  ok("在前景只響不通知",beeped===1&&notified===null,"beeped="+beeped);
+  stopRest();
+}
+{
+  $("rest-alert").click();await settle();
+  ok("可以關掉提醒",S.settings.alert===false);
+  buzzes=0;beeped=0;notified=null;
+  startRest(1);restEnd=Date.now()-10;restAlerted=false;tick();
+  await settle();
+  ok("關掉後不響也不通知",beeped===0&&notified===null);
+  ok("但震動照舊",buzzes===1,String(buzzes));
+  stopRest();
+}
+{
+  audioCtx=null;
+  localStorage.setItem(RK,JSON.stringify({end:Date.now()+60000,total:90,alerted:false}));
+  restEnd=0;clearInterval(restIv);restoreRest();
+  S.settings.alert=true;
+  ok("還原的休息還沒有音訊",audioCtx===null);
+  document.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}));
+  ok("第一次觸碰畫面就建立音訊",audioCtx!==null);
+  stopRest();
+}
+{
+  show("today");startRoutine(S.routines[0]);startRest(300);
+  clearInterval(restIv);restIv=null;
+  restEnd=Date.now()+5000;
+  document.dispatchEvent(new Event("visibilitychange"));
+  ok("回到前景立刻補上倒數",$("rest").textContent==="00:05",$("rest").textContent);
+  stopRest();
+}
+{
+  startRest(90);$("discard").click();$("discard-yes").click();
+  ok("放棄訓練會清掉計時",restEnd===0&&localStorage.getItem(RK)===null);
+  startRoutine(S.routines[0]);
+  S.draft.exercises[0].sets[0]={kg:100,reps:5,done:true};
+  startRest(90);$("finish").click();
+  ok("完成訓練也會清掉計時",restEnd===0&&localStorage.getItem(RK)===null);
+}
+
+/* ============================ 無障礙 ============================ */
+G("無障礙");
+fresh();show("history");
+{
+  const b=document.querySelector("#hist button.hitem");
+  const label=b.getAttribute("aria-label");
+  ok("卡片說明自己是可以修改的",/^修改/.test(label),label.slice(0,14));
+  ok("卡片說明裡保留動作清單",label.includes(S.workouts[0].exercises[0].name));
+  ok("卡片說明裡保留總量",label.includes(fmtK(vol(S.workouts[0]))));
+  ok("按鈕裡沒有區塊元素",!b.querySelector("div,table,ol,ul,p"),
+     [...b.querySelectorAll("*")].map(n=>n.tagName).filter((v,i,a)=>a.indexOf(v)===i).join(","));
+  ok("卡片版面仍是 grid",getComputedStyle(b).display==="grid");
+}
+
+}catch(e){
+  R.push({group:group||"（執行中斷）",name:"測試中途拋出例外",pass:false,detail:(e&&e.stack||e)+""});
+}
+parent.postMessage({liftsyncTest:true,results:R},"*");
+})();
+</script>
+
+<script>
+const out=document.getElementById("out"), tally=document.getElementById("tally");
+const howto=document.getElementById("howto");
+let onlyFail=false, lastResults=null, frame=null;
+
+// The app writes to the same origin's localStorage, so take everything out of the way
+// and put it back afterwards — running this must never cost somebody their training log.
+let stash=null;
+function stashStorage(){
+  stash={};
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);stash[k]=localStorage.getItem(k)}}
+  catch(e){stash=null}
+}
+function restoreStorage(){
+  if(!stash)return;
+  try{localStorage.clear();for(const k in stash)localStorage.setItem(k,stash[k])}catch(e){}
+}
+window.addEventListener("beforeunload",restoreStorage);
+
+function render(){
+  if(!lastResults)return;
+  const pass=lastResults.filter(r=>r.pass).length, fail=lastResults.length-pass;
+  tally.innerHTML=`<span class="p">${pass} 通過</span>　<span class="${fail?"f":""}">${fail} 失敗</span>`;
+  document.title=(fail?`✗ ${fail} 失敗`:`✓ ${pass} 通過`)+" · LiftSync 測試";
+  out.replaceChildren();
+  let group=null, ul=null;
+  for(const r of lastResults){
+    if(onlyFail&&r.pass)continue;
+    if(r.group!==group){
+      group=r.group;
+      const h=document.createElement("h2");h.textContent=group;out.append(h);
+      ul=document.createElement("ul");out.append(ul);
+    }
+    const li=document.createElement("li");li.className=r.pass?"ok":"no";
+    const tag=document.createElement("span");tag.className="tag";tag.textContent=r.pass?"PASS":"FAIL";
+    const body=document.createElement("span");body.textContent=r.name;
+    if(r.detail){
+      const why=document.createElement("span");why.className="why";why.textContent=r.detail;body.append(why);
+    }
+    li.append(tag,body);ul.append(li);
+  }
+  if(onlyFail&&!fail){
+    const p=document.createElement("p");p.className="note";p.textContent="沒有失敗的項目。";out.append(p);
+  }
+}
+
+window.addEventListener("message",e=>{
+  if(!e.data||!e.data.liftsyncTest)return;
+  lastResults=e.data.results;
+  restoreStorage();
+  if(frame){frame.remove();frame=null}
+  render();
+});
+
+async function run(){
+  lastResults=null;onlyFail=false;
+  tally.textContent="執行中…";out.replaceChildren();
+  // Housekeeping only — a stale service worker would serve a cached index.html and the
+  // suite would quietly test yesterday's app. It must never be able to block the run,
+  // though: CacheStorage can simply never settle in a headless browser.
+  const capped=p=>Promise.race([p,new Promise(r=>setTimeout(r,1500))]);
+  try{
+    await capped((async()=>{
+      if(navigator.serviceWorker){
+        const regs=await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r=>r.unregister()));
+      }
+      if(window.caches){
+        const keys=await caches.keys();
+        await Promise.all(keys.map(k=>caches.delete(k)));
+      }
+    })());
+  }catch(e){}
+  stashStorage();
+  if(frame)frame.remove();
+  frame=document.createElement("iframe");
+  frame.src="index.html?test="+Date.now();   // bypass any cached copy
+  frame.addEventListener("load",()=>{
+    let doc;
+    try{doc=frame.contentDocument}catch(err){doc=null}
+    if(!doc||!doc.body){
+      howto.style.borderLeftColor="var(--fail)";
+      tally.innerHTML='<span class="f">無法讀取 index.html</span>';
+      restoreStorage();return;
+    }
+    howto.classList.add("hide");
+    // G is taken by the app (muscle group lookup); the suite calls it G2
+    const bridge=doc.createElement("script");
+    bridge.textContent="window.G2=G;";
+    doc.body.appendChild(bridge);
+    const s=doc.createElement("script");
+    s.textContent=document.getElementById("suite").textContent;
+    doc.body.appendChild(s);
+    setTimeout(()=>{
+      if(lastResults)return;
+      tally.innerHTML='<span class="f">測試沒有回報結果</span>';
+      restoreStorage();
+    },20000);
+  });
+  document.body.appendChild(frame);
+}
+
+document.getElementById("rerun").addEventListener("click",run);
+document.getElementById("onlyfail").addEventListener("click",()=>{onlyFail=!onlyFail;render()});
+run();
+</script>
+</body>
+</html>
