@@ -1,5 +1,5 @@
 // LiftSync service worker — bump VERSION on every deploy so phones pick up the update
-const VERSION = "liftsync-1.0.5";
+const VERSION = "liftsync-1.0.6";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/rounded/icon-32.png", "./icons/rounded/icon-192.png", "./icons/rounded/icon-512.png",
   "./icons/ios/icon-180.png", "./icons/maskable-192.png"];
@@ -10,6 +10,14 @@ self.addEventListener("install", e => {
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
+});
+// tapping the end-of-rest notification should land back on the workout, not a new tab
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+    for (const c of list) if ("focus" in c) return c.focus();
+    if (clients.openWindow) return clients.openWindow("./");
+  }));
 });
 self.addEventListener("fetch", e => {
   const req = e.request;

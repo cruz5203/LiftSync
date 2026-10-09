@@ -230,6 +230,10 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
           <span class="chips" id="rest-presets"></span>
           <label class="row hint" style="gap:4px">自訂<input id="rest-custom" class="mini" type="number" min="10" max="900" step="5" aria-label="自訂休息秒數">秒</label>
         </div>
+        <div class="row" style="gap:8px">
+          <button type="button" class="chip" id="rest-alert" aria-pressed="false">休息結束時提醒</button>
+          <span class="hint" id="rest-alert-note"></span>
+        </div>
         <span class="hint">完成一組按 ✓ 後自動開始倒數。每個動作也可以設定自己的休息時間。</span>
       </div>
       <div id="draft-list" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -436,7 +440,7 @@ if(!S||!Array.isArray(S.workouts))S=seed();
 function normalize(st){
   st.workouts=Array.isArray(st.workouts)?st.workouts:[];
   st.bodyweight=st.bodyweight||[];st.custom=st.custom||[];st.routines=st.routines||[];
-  st.settings=Object.assign({rest:90,exRest:{}},st.settings||{});st.ver=3;
+  st.settings=Object.assign({rest:90,exRest:{},alert:false},st.settings||{});st.ver=3;
   // older backups predate ids, and the editor finds a workout by id — a missing or
   // repeated one would edit, or delete, the wrong record
   const seen=new Set();
@@ -628,16 +632,93 @@ function addEx(name){
 /* ---------- rest timer ---------- */
 const PRESETS=[45,60,90,120,180,240];
 const fmtSec=s=>s>=60?`${Math.floor(s/60)}:${pad(s%60)}`:`${s}秒`;
-let restEnd=0,restTotal=0,restIv;
-function startRest(sec){restTotal=sec;restEnd=Date.now()+sec*1000;clearInterval(restIv);tick();restIv=setInterval(tick,250)}
+let restEnd=0,restTotal=0,restIv,restAlerted=false;
+const REST_KEY=KEY+"-rest";
+const STALE_REST=15*60*1000;   // older than this and the rest is simply over
+// the countdown is a deadline, not a tally, so it survives the phone sleeping or the
+// system killing the app mid-set — without this a relaunch silently loses the rest
+function saveRest(){try{restEnd?localStorage.setItem(REST_KEY,JSON.stringify({end:restEnd,total:restTotal,alerted:restAlerted})):localStorage.removeItem(REST_KEY)}catch(e){}}
+function restoreRest(){
+  let r=null;try{r=JSON.parse(localStorage.getItem(REST_KEY)||"null")}catch(e){}
+  if(!r||!S.draft||Date.now()-r.end>STALE_REST){try{localStorage.removeItem(REST_KEY)}catch(e){}return}
+  restEnd=r.end;restTotal=r.total||0;restAlerted=!!r.alerted;
+  clearInterval(restIv);tick();if(restEnd>Date.now())restIv=setInterval(tick,250);
+}
+function startRest(sec){restTotal=sec;restEnd=Date.now()+sec*1000;restAlerted=false;saveRest();clearInterval(restIv);tick();restIv=setInterval(tick,250)}
+function stopRest(){restEnd=0;restAlerted=false;clearInterval(restIv);saveRest()}
 function tick(){
   const box=document.querySelector(".restbox");
   const s=restEnd?Math.max(0,Math.ceil((restEnd-Date.now())/1000)):0;
   $("rest").textContent=restEnd?`${pad(Math.floor(s/60))}:${pad(s%60)}`:fmtTime(S.settings.rest);
   $("rest-fill").style.width=restEnd&&restTotal?`${100*s/restTotal}%`:"0";
   box.classList.toggle("ready",!!restEnd&&s===0);
-  if(restEnd&&s===0){clearInterval(restIv);if(navigator.vibrate)try{navigator.vibrate(300)}catch(e){}}
+  if(restEnd&&s===0){
+    clearInterval(restIv);
+    if(navigator.vibrate)try{navigator.vibrate(300)}catch(e){}
+    if(!restAlerted){restAlerted=true;saveRest();restDone()}
+  }
 }
+
+/* ---------- end-of-rest alert ---------- */
+// background timers get throttled, so the deadline can be long past by the time this
+// runs; a notification for a rest that ended ten minutes ago is just noise
+const LATE_ALERT=90*1000;
+let audioCtx=null;
+function primeAudio(){            // must be built inside a tap, or it starts suspended
+  if(audioCtx||!S.settings.alert)return;
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(AC)try{audioCtx=new AC()}catch(e){audioCtx=null}
+}
+function beep(){
+  if(!audioCtx)return;
+  try{
+    if(audioCtx.state==="suspended")audioCtx.resume();
+    const t=audioCtx.currentTime,g=audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001,t);g.connect(audioCtx.destination);
+    [880,1320].forEach((f,i)=>{
+      const o=audioCtx.createOscillator();o.type="sine";o.frequency.value=f;
+      o.connect(g);o.start(t+i*0.18);o.stop(t+i*0.18+0.15);
+    });
+    g.gain.exponentialRampToValueAtTime(0.25,t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.5);
+  }catch(e){}
+}
+function restDone(){
+  if(!S.settings.alert||Date.now()-restEnd>LATE_ALERT)return;
+  beep();
+  if(document.hidden&&window.Notification&&Notification.permission==="granted"&&navigator.serviceWorker){
+    navigator.serviceWorker.ready.then(r=>r.showNotification("休息結束，下一組！",{
+      body:"回到 LiftSync 繼續這次訓練。",tag:"liftsync-rest",renotify:true,
+      icon:"icons/rounded/icon-192.png",badge:"icons/rounded/icon-96.png",
+      vibrate:[200,100,200]
+    })).catch(()=>{});
+  }
+}
+function renderAlertToggle(){
+  const b=$("rest-alert"),note=$("rest-alert-note");
+  const on=!!S.settings.alert, blocked=window.Notification&&Notification.permission==="denied";
+  b.setAttribute("aria-pressed",String(on));
+  b.textContent=on?"休息結束時提醒：開":"休息結束時提醒：關";
+  note.textContent=!on?""
+    :blocked?"系統已封鎖通知，只會響一聲並震動。"
+    :"結束時會響一聲並震動；在背景時也會跳通知。";
+}
+$("rest-alert").addEventListener("click",async()=>{
+  if(S.settings.alert){S.settings.alert=false;save();renderAlertToggle();return}
+  S.settings.alert=true;save();primeAudio();
+  if(window.Notification&&Notification.permission==="default"){
+    try{await Notification.requestPermission()}catch(e){}
+  }
+  renderAlertToggle();
+  toast(window.Notification&&Notification.permission==="granted"
+    ?"休息結束時會通知你":"休息結束時會響一聲並震動");
+});
+// a throttled or frozen tab stops ticking; catch up the moment it is looked at again
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden||!restEnd)return;
+  clearInterval(restIv);tick();if(restEnd>Date.now())restIv=setInterval(tick,250);
+});
+window.addEventListener("pageshow",()=>{if(restEnd)tick()});
 const fmtTime=s=>`${pad(Math.floor(s/60))}:${pad(s%60)}`;
 function renderRestSettings(){
   chipRow($("rest-presets"),PRESETS.map(fmtSec),PRESETS.includes(S.settings.rest)?fmtSec(S.settings.rest):null,o=>{S.settings.rest=PRESETS[PRESETS.map(fmtSec).indexOf(o)];save();$("rest-custom").value="";renderRestSettings();if(!restEnd)tick()});
@@ -647,9 +728,9 @@ function renderRestSettings(){
 $("rest-custom").addEventListener("change",()=>{const v=Math.round(+$("rest-custom").value);
   if(!(v>=10&&v<=900)){toast("休息時間請設在 10 到 900 秒之間");return}
   S.settings.rest=v;save();renderRestSettings();if(!restEnd)tick();toast(`預設休息改為 ${fmtSec(v)}`)});
-$("rest-plus").addEventListener("click",()=>{if(restEnd){const s=Math.max(0,(restEnd-Date.now())/1000);restEnd=Date.now()+(s+15)*1000;restTotal=Math.max(restTotal,s+15);clearInterval(restIv);restIv=setInterval(tick,250);tick()}else{S.settings.rest=Math.min(900,S.settings.rest+15);save();renderRestSettings();tick()}});
-$("rest-minus").addEventListener("click",()=>{if(restEnd){restEnd=Math.max(Date.now(),restEnd-15000);tick()}else{S.settings.rest=Math.max(10,S.settings.rest-15);save();renderRestSettings();tick()}});
-$("rest-skip").addEventListener("click",()=>{restEnd=0;clearInterval(restIv);tick()});
+$("rest-plus").addEventListener("click",()=>{if(restEnd){const s=Math.max(0,(restEnd-Date.now())/1000);restEnd=Date.now()+(s+15)*1000;restTotal=Math.max(restTotal,s+15);restAlerted=false;saveRest();clearInterval(restIv);restIv=setInterval(tick,250);tick()}else{S.settings.rest=Math.min(900,S.settings.rest+15);save();renderRestSettings();tick()}});
+$("rest-minus").addEventListener("click",()=>{if(restEnd){restEnd=Math.max(Date.now(),restEnd-15000);saveRest();tick()}else{S.settings.rest=Math.max(10,S.settings.rest-15);save();renderRestSettings();tick()}});
+$("rest-skip").addEventListener("click",()=>{stopRest();tick()});
 const restFor=name=>S.settings.exRest[name]||S.settings.rest;
 function renderDraft(){
   const has=!!S.draft;
@@ -669,7 +750,7 @@ function renderDraft(){
       kg.addEventListener("input",()=>{s.kg=kg.value===""?"":+kg.value;save()});
       rp.addEventListener("input",()=>{s.reps=rp.value===""?"":+rp.value;save()});
       const ck=el("button",{type:"button",class:"check","aria-pressed":String(!!s.done),"aria-label":`完成第 ${si+1} 組`},"✓");
-      ck.addEventListener("click",()=>{s.done=!s.done;save();renderDraft();if(s.done)startRest(restFor(ex.name))});
+      ck.addEventListener("click",()=>{s.done=!s.done;save();renderDraft();if(s.done){primeAudio();startRest(restFor(ex.name))}});
       tb.append(el("tr",{class:s.done?"done":""},el("td",{class:"num hint"},String(si+1)),el("td",{},kg),el("td",{},rp),el("td",{},ck)));
     });
     const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
@@ -694,7 +775,7 @@ function renderDraft(){
 $("start").addEventListener("click",()=>{S.draft={date:ymd(new Date()),exercises:[]};save();renderDraft()});
 $("discard").addEventListener("click",()=>$("discard-confirm").hidden=false);
 $("discard-no").addEventListener("click",()=>$("discard-confirm").hidden=true);
-$("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;restEnd=0;clearInterval(restIv);tick();renderDraft()});
+$("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;stopRest();tick();renderDraft()});
 $("finish").addEventListener("click",()=>{
   const bad=badSet(S.draft.exercises);
   if(bad){toast(bad);return}
@@ -703,7 +784,7 @@ $("finish").addEventListener("click",()=>{
   const before=bests();
   const w={id:"w"+Date.now(),date:S.draft.date,routine:S.draft.routine||null,exercises:ex};
   S.workouts.unshift(w);S.workouts.sort((a,b)=>b.date.localeCompare(a.date));
-  S.draft=null;save();restEnd=0;tick();
+  S.draft=null;save();stopRest();tick();
   const after=bests();const prs=Object.keys(after).filter(k=>after[k].e>(before[k]?.e||0)+0.01);
   renderDraft();renderSummary();
   toast(`已儲存：總量 ${fmtK(vol(w))} 公斤`+(prs.length?`，新紀錄：${prs.join("、")}`:""));
@@ -979,7 +1060,7 @@ if(document.documentElement.dataset.build==="pwa"){
     }catch(_){toast("這不是 LiftSync 的備份檔，請選擇匯出時產生的 .json 檔")}
   });
   $("import-no").addEventListener("click",()=>{pending=null;$("import-confirm").hidden=true});
-  $("import-yes").addEventListener("click",()=>{S=normalize(pending);S.sample=false;wEdit=null;
+  $("import-yes").addEventListener("click",()=>{S=normalize(pending);S.sample=false;wEdit=null;stopRest();
     save();pending=null;$("import-confirm").hidden=true;renderAll();showLast();toast(`已還原 ${S.workouts.length} 次訓練`)});
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
@@ -988,10 +1069,10 @@ if(document.documentElement.dataset.build==="pwa"){
 $("clear-sample").addEventListener("click",()=>$("clear-confirm").hidden=false);
 $("clear-no").addEventListener("click",()=>$("clear-confirm").hidden=true);
 $("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],draft:null,sample:false,custom:S.custom,routines:S.routines,settings:S.settings};save();
-  wEdit=null;$("clear-confirm").hidden=true;renderAll();if(activeTab()==="history")renderHistory();toast("已清除範例資料")});
+  wEdit=null;stopRest();$("clear-confirm").hidden=true;renderAll();if(activeTab()==="history")renderHistory();toast("已清除範例資料")});
 
-function renderAll(){renderSummary();renderPicker();renderRestSettings();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
-renderAll();
+function renderAll(){renderSummary();renderPicker();renderRestSettings();renderAlertToggle();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
+renderAll();restoreRest();
 let t0="today";try{t0=localStorage.getItem(KEY+"-tab")||localStorage.getItem(OLD_KEY+"-tab")||"today"}catch(e){}
 show(["today","history","progress"].includes(t0)?t0:"today");
 </script>
