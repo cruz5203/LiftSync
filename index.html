@@ -437,22 +437,30 @@ let S;
 try{S=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY)||"null")}catch(e){S=null}
 if(S&&S.sample&&(S.ver||0)<3)S=null; // refresh old sample data
 if(!S||!Array.isArray(S.workouts))S=seed();
+const arr=v=>Array.isArray(v)?v:[];
+const isDate=d=>typeof d==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(d);
 function normalize(st){
-  st.workouts=Array.isArray(st.workouts)?st.workouts:[];
-  st.bodyweight=st.bodyweight||[];st.custom=st.custom||[];st.routines=st.routines||[];
   st.settings=Object.assign({rest:90,exRest:{},alert:false},st.settings||{});st.ver=3;
+  // every renderer walks these; a non-array here throws during the first paint, and
+  // the state has already been written, so the next launch throws in the same place
+  st.workouts=arr(st.workouts).filter(w=>w&&isDate(w.date));   // dateless cannot be shown or sorted
+  st.routines=arr(st.routines).filter(r=>r&&r.id);
+  st.custom=arr(st.custom).filter(c=>c&&c.name);
   // older backups predate ids, and the editor finds a workout by id — a missing or
   // repeated one would edit, or delete, the wrong record
   const seen=new Set();
   st.workouts.forEach((w,i)=>{
     if(!w.id||seen.has(w.id))w.id=`w${i}-${w.date}`;
     seen.add(w.id);
-    w.exercises=Array.isArray(w.exercises)?w.exercises:[];
-    w.exercises.forEach(e=>{e.sets=Array.isArray(e.sets)?e.sets:[]});
+    w.exercises=arr(w.exercises);
+    w.exercises.forEach(e=>{e.sets=arr(e.sets)});
   });
-  st.routines=st.routines.filter(r=>r&&r.id);
-  st.routines.forEach(r=>{r.exercises=Array.isArray(r.exercises)?r.exercises:[]});
-  st.bodyweight=st.bodyweight.filter(b=>b&&b.date&&+b.kg>0);
+  st.routines.forEach(r=>{r.exercises=arr(r.exercises)});
+  // one weigh-in per day is what the form and the chart assume; duplicates would make
+  // the row editor write to, and the ✕ delete, more than the row that was tapped
+  const bw=new Map();
+  arr(st.bodyweight).filter(b=>b&&isDate(b.date)&&+b.kg>0).forEach(b=>bw.set(b.date,b));
+  st.bodyweight=[...bw.values()];
   if(st.draft&&!Array.isArray(st.draft.exercises))st.draft=null;
   return st;
 }
@@ -563,7 +571,9 @@ function updateCustomHint(){
   const show=t=>{h.textContent=t;h.hidden=false};
   const mine=()=>{const u=usageOf(cEdit);
     return u.w||u.r?`改名會一併更新 ${u.w} 筆紀錄、${u.r} 個範本。`:"還沒有紀錄或範本用到這個動作。"};
-  if(n&&n!==cEdit&&!allEx().some(x=>x.name===n&&x.name!==cEdit)){
+  if(n&&n!==cEdit&&allEx().some(x=>x.name===n&&x.name!==cEdit))
+    return show(`動作庫裡已經有「${n}」，換個名字才能儲存。`);
+  if(n&&n!==cEdit){
     const u=usageOf(n);
     if(u.w||u.r)return show(cEdit
       ?`過去的 ${u.w} 筆紀錄、${u.r} 個範本裡也有「${n}」，改成這個名字會把兩邊併成同一個動作。`
@@ -978,6 +988,7 @@ function renderWorkoutEdit(){
   });
 }
 $("w-date").addEventListener("change",()=>{
+  if(!wEdit)return;   // closing the editor blurs this field, which can defer a change
   const v=$("w-date").value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){$("w-date").value=wEdit.date;toast("請選一個有效的日期");return}
   if(v>ymd(new Date())){$("w-date").value=wEdit.date;toast("日期不能選在今天之後");return}
@@ -1107,8 +1118,17 @@ if(document.documentElement.dataset.build==="pwa"){
     }catch(_){toast("這不是 LiftSync 的備份檔，請選擇匯出時產生的 .json 檔")}
   });
   $("import-no").addEventListener("click",()=>{pending=null;$("import-confirm").hidden=true});
-  $("import-yes").addEventListener("click",()=>{S=normalize(pending);S.sample=false;wEdit=null;editing=null;stopRest();
-    save();pending=null;$("import-confirm").hidden=true;renderAll();showLast();toast(`已還原 ${S.workouts.length} 次訓練`)});
+  $("import-yes").addEventListener("click",()=>{
+    const prev=S;
+    try{
+      S=normalize(pending);S.sample=false;wEdit=null;editing=null;stopRest();
+      renderAll();              // render first: a backup that throws must not be saved
+    }catch(err){
+      S=prev;try{renderAll()}catch(e2){}   // the rollback render must not throw on top
+      pending=null;$("import-confirm").hidden=true;
+      toast("這個備份檔的內容有問題，沒有匯入");return;
+    }
+    save();pending=null;$("import-confirm").hidden=true;showLast();toast(`已還原 ${S.workouts.length} 次訓練`)});
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
 
@@ -1119,7 +1139,7 @@ $("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],
   wEdit=null;editing=null;stopRest();$("clear-confirm").hidden=true;renderAll();toast("已清除範例資料")});
 
 function renderAll(){renderSummary();renderPicker();renderRestSettings();renderAlertToggle();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
-renderAll();restoreRest();
+renderAll();restoreRest();clearRestNote();
 let t0="today";try{t0=localStorage.getItem(KEY+"-tab")||localStorage.getItem(OLD_KEY+"-tab")||"today"}catch(e){}
 show(["today","history","progress"].includes(t0)?t0:"today");
 </script>
