@@ -444,7 +444,16 @@ function normalize(st){
   // older backups predate ids, and the editor finds a workout by id — a missing or
   // repeated one would edit, or delete, the wrong record
   const seen=new Set();
-  st.workouts.forEach((w,i)=>{if(!w.id||seen.has(w.id))w.id=`w${i}-${w.date}`;seen.add(w.id)});
+  st.workouts.forEach((w,i)=>{
+    if(!w.id||seen.has(w.id))w.id=`w${i}-${w.date}`;
+    seen.add(w.id);
+    w.exercises=Array.isArray(w.exercises)?w.exercises:[];
+    w.exercises.forEach(e=>{e.sets=Array.isArray(e.sets)?e.sets:[]});
+  });
+  st.routines=st.routines.filter(r=>r&&r.id);
+  st.routines.forEach(r=>{r.exercises=Array.isArray(r.exercises)?r.exercises:[]});
+  st.bodyweight=st.bodyweight.filter(b=>b&&b.date&&+b.kg>0);
+  if(st.draft&&!Array.isArray(st.draft.exercises))st.draft=null;
   return st;
 }
 S=normalize(S);
@@ -622,9 +631,9 @@ $("custom-form").addEventListener("submit",e=>{
   const u=usageOf(name);   // re-adding a removed name reattaches its old records
   S.custom.push({name,g,eq,custom:true});save();
   closeCustomForm();refreshExerciseViews();
+  if(S.draft||editing||wEdit)addEx(name);
   if(u.w||u.r)toast(`已加入「${name}」，接回 ${u.w} 筆紀錄、${u.r} 個範本`);
-  else if(S.draft||editing||wEdit)addEx(name);
-  else toast(`已加入動作庫：「${name}」`);
+  else if(!(S.draft||editing||wEdit))toast(`已加入動作庫：「${name}」`);
 });
 // redraw whichever view currently owns the shared picker, so renamed exercises update in place
 function refreshExerciseViews(){
@@ -672,8 +681,10 @@ function tick(){
   // noise has to sit behind the latch or the phone buzzes on every return
   if(restEnd&&s===0&&!restAlerted){
     clearInterval(restIv);restAlerted=true;saveRest();
-    if(navigator.vibrate)try{navigator.vibrate(300)}catch(e){}
-    restDone();
+    if(Date.now()-restEnd<=LATE_ALERT){
+      if(navigator.vibrate)try{navigator.vibrate(300)}catch(e){}
+      restDone();
+    }
   }
 }
 
@@ -690,21 +701,23 @@ function primeAudio(){            // must be built inside a tap, or it starts su
 function beep(){
   if(!audioCtx)return;
   const play=()=>{try{
-    const t=audioCtx.currentTime,g=audioCtx.createGain();
-    g.gain.setValueAtTime(0.0001,t);g.connect(audioCtx.destination);
-    [880,1320].forEach((f,i)=>{
-      const o=audioCtx.createOscillator();o.type="sine";o.frequency.value=f;
-      o.connect(g);o.start(t+i*0.18);o.stop(t+i*0.18+0.15);
+    const t0=audioCtx.currentTime;
+    [[880,0],[1320,0.18]].forEach(([f,d])=>{   // each tone needs its own envelope
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.type="sine";o.frequency.value=f;o.connect(g);g.connect(audioCtx.destination);
+      const t=t0+d;
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.25,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.16);
+      o.start(t);o.stop(t+0.18);
     });
-    g.gain.exponentialRampToValueAtTime(0.25,t+0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001,t+0.5);
   }catch(e){}};
   // a suspended context has a frozen clock, so scheduling before it resumes is silent
   if(audioCtx.state==="suspended")audioCtx.resume().then(play,()=>{});
   else play();
 }
 function restDone(){
-  if(!S.settings.alert||Date.now()-restEnd>LATE_ALERT)return;
+  if(!S.settings.alert)return;   // lateness is already handled by the caller
   beep();
   if(document.hidden&&window.Notification&&Notification.permission==="granted"&&navigator.serviceWorker){
     navigator.serviceWorker.ready.then(r=>r.showNotification("休息結束，下一組！",{
@@ -720,9 +733,9 @@ function renderAlertToggle(){
   const canNotify=window.Notification&&Notification.permission==="granted";
   b.setAttribute("aria-pressed",String(on));
   b.textContent=on?"休息結束時提醒：開":"休息結束時提醒：關";
-  note.textContent=!on?""
-    :canNotify?"結束時會響一聲並震動；在背景時也會跳通知。"
-    :"結束時會響一聲並震動。沒有通知權限，在背景時不會跳通知。";
+  note.textContent=!on?"倒數結束時仍然會震動一下。"
+    :canNotify?"結束時會響一聲；在背景時也會跳通知。"
+    :"結束時會響一聲。沒有通知權限，在背景時不會跳通知。";
 }
 $("rest-alert").addEventListener("click",async()=>{
   if(S.settings.alert){S.settings.alert=false;save();renderAlertToggle();return}
@@ -809,10 +822,11 @@ $("discard").addEventListener("click",()=>$("discard-confirm").hidden=false);
 $("discard-no").addEventListener("click",()=>$("discard-confirm").hidden=true);
 $("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;stopRest();tick();renderDraft()});
 $("finish").addEventListener("click",()=>{
+  // only ticked rows get saved, so only ticked rows are judged
+  const bad=badSet(S.draft.exercises,st=>st.done&&!blank(st.reps));
+  if(bad){toast(bad);return}
   const ex=S.draft.exercises.map(e=>({name:e.name,sets:e.sets.filter(s=>s.done&&+s.reps>0).map(s=>({kg:+s.kg||0,reps:+s.reps}))})).filter(e=>e.sets.length);
   if(!ex.length){toast("還沒有打勾完成的組。完成一組後按 ✓ 再結束訓練。");return}
-  const bad=badSet(ex);   // rows that were never ticked are discarded, so never judged
-  if(bad){toast(bad);return}
   const before=bests();
   const w={id:"w"+Date.now(),date:S.draft.date,routine:S.draft.routine||null,exercises:ex};
   S.workouts.unshift(w);S.workouts.sort((a,b)=>b.date.localeCompare(a.date));
@@ -916,12 +930,13 @@ function renderHistory(){
 
 // the number inputs carry min="0" but nothing ever submits these forms, so the
 // attribute is decorative — negative weight would quietly shrink every volume total
-function badSet(list){
+const blank=v=>v===""||v==null;
+function badSet(list,counts){
   for(const e of list)for(const st of e.sets){
-    if(+st.kg<0)return `「${e.name}」的重量不能是負數。`;
-    if(+st.reps<0)return `「${e.name}」的次數不能是負數。`;
-    if(+st.reps>999)return `「${e.name}」的次數看起來不對，請確認。`;
-    if(+st.kg>1000)return `「${e.name}」的重量看起來不對，請確認。`;
+    if(!counts(st))continue;          // a row left blank is simply not saved
+    const kg=+st.kg,reps=+st.reps;
+    if(!(reps>0)||reps>999)return `「${e.name}」的次數要填 1 到 999 之間的數字。`;
+    if(!blank(st.kg)&&(kg<0||kg>1000))return `「${e.name}」的重量要填 0 到 1000 之間的數字。`;
   }
   return null;
 }
@@ -970,11 +985,11 @@ $("w-date").addEventListener("change",()=>{
 });
 $("w-cancel").addEventListener("click",()=>{closeWorkout();toast("已取消，紀錄沒有變動")});
 $("w-save").addEventListener("click",()=>{
+  const bad=badSet(wEdit.exercises,st=>!blank(st.reps));   // blank rows are dropped, not judged
+  if(bad){toast(bad);return}
   const ex=wEdit.exercises.map(e=>({name:e.name,sets:e.sets.filter(st=>+st.reps>0).map(st=>({kg:+st.kg||0,reps:+st.reps}))})).filter(e=>e.sets.length);
   const empty=wEdit.exercises.find(e=>!e.sets.some(st=>+st.reps>0));
   if(empty){toast(`「${empty.name}」沒有任何一組填了次數。要拿掉這個動作請按它的「移除」。`);return}
-  const bad=badSet(ex);   // blank rows are dropped below, so they are not judged here
-  if(bad){toast(bad);return}
   if(!ex.length){toast("這筆紀錄沒有東西可以存。要整筆移除請按「刪除這筆」。");return}
   const i=S.workouts.findIndex(w=>w.id===wEdit.id);
   if(i<0){toast("找不到這筆紀錄，可能已經被刪掉了");closeWorkout();return}
@@ -1092,7 +1107,7 @@ if(document.documentElement.dataset.build==="pwa"){
     }catch(_){toast("這不是 LiftSync 的備份檔，請選擇匯出時產生的 .json 檔")}
   });
   $("import-no").addEventListener("click",()=>{pending=null;$("import-confirm").hidden=true});
-  $("import-yes").addEventListener("click",()=>{S=normalize(pending);S.sample=false;wEdit=null;stopRest();
+  $("import-yes").addEventListener("click",()=>{S=normalize(pending);S.sample=false;wEdit=null;editing=null;stopRest();
     save();pending=null;$("import-confirm").hidden=true;renderAll();showLast();toast(`已還原 ${S.workouts.length} 次訓練`)});
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
@@ -1101,7 +1116,7 @@ if(document.documentElement.dataset.build==="pwa"){
 $("clear-sample").addEventListener("click",()=>$("clear-confirm").hidden=false);
 $("clear-no").addEventListener("click",()=>$("clear-confirm").hidden=true);
 $("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],draft:null,sample:false,custom:S.custom,routines:S.routines,settings:S.settings};save();
-  wEdit=null;stopRest();$("clear-confirm").hidden=true;renderAll();toast("已清除範例資料")});
+  wEdit=null;editing=null;stopRest();$("clear-confirm").hidden=true;renderAll();toast("已清除範例資料")});
 
 function renderAll(){renderSummary();renderPicker();renderRestSettings();renderAlertToggle();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
 renderAll();restoreRest();
