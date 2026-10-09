@@ -512,13 +512,29 @@ const usageOf=n=>({w:S.workouts.filter(x=>x.exercises.some(e=>e.name===n)).lengt
 // the name is the only key tying a record to an exercise, so a rename has to sweep
 // every place one is stored or the history detaches from the library entry
 function renameEverywhere(from,to){
-  const hit=l=>l&&l.forEach(e=>{if(e.name===from)e.name=to});
+  // renaming onto an orphaned name is allowed and warned about, so a list can already
+  // hold the target — two entries of one name would break one-name-per-workout
+  const hit=l=>{
+    if(!l)return;
+    const dst=l.find(e=>e.name===to);
+    for(let i=l.length-1;i>=0;i--){
+      const e=l[i];
+      if(e.name!==from)continue;
+      if(!dst){e.name=to;continue}
+      if(Array.isArray(dst.sets)&&Array.isArray(e.sets))dst.sets=e.sets.concat(dst.sets);
+      else dst.sets=Math.min(10,(+dst.sets||0)+(+e.sets||0));   // routines store a count
+      l.splice(i,1);
+    }
+  };
   S.workouts.forEach(w=>hit(w.exercises));
   S.routines.forEach(r=>hit(r.exercises));
   if(S.draft)hit(S.draft.exercises);
   if(editing)hit(editing.exercises);
   if(wEdit)hit(wEdit.exercises);
-  if(S.settings.exRest[from]!==undefined){S.settings.exRest[to]=S.settings.exRest[from];delete S.settings.exRest[from]}
+  if(S.settings.exRest[from]!==undefined){
+    if(S.settings.exRest[to]===undefined)S.settings.exRest[to]=S.settings.exRest[from];
+    delete S.settings.exRest[from];
+  }
 }
 function customForm(name){
   cEdit=name;cDel=null;$("c-del-confirm").hidden=true;
@@ -652,10 +668,12 @@ function tick(){
   $("rest").textContent=restEnd?`${pad(Math.floor(s/60))}:${pad(s%60)}`:fmtTime(S.settings.rest);
   $("rest-fill").style.width=restEnd&&restTotal?`${100*s/restTotal}%`:"0";
   box.classList.toggle("ready",!!restEnd&&s===0);
-  if(restEnd&&s===0){
-    clearInterval(restIv);
+  // reopening the app re-ticks an already-finished rest, so everything that makes
+  // noise has to sit behind the latch or the phone buzzes on every return
+  if(restEnd&&s===0&&!restAlerted){
+    clearInterval(restIv);restAlerted=true;saveRest();
     if(navigator.vibrate)try{navigator.vibrate(300)}catch(e){}
-    if(!restAlerted){restAlerted=true;saveRest();restDone()}
+    restDone();
   }
 }
 
@@ -671,8 +689,7 @@ function primeAudio(){            // must be built inside a tap, or it starts su
 }
 function beep(){
   if(!audioCtx)return;
-  try{
-    if(audioCtx.state==="suspended")audioCtx.resume();
+  const play=()=>{try{
     const t=audioCtx.currentTime,g=audioCtx.createGain();
     g.gain.setValueAtTime(0.0001,t);g.connect(audioCtx.destination);
     [880,1320].forEach((f,i)=>{
@@ -681,7 +698,10 @@ function beep(){
     });
     g.gain.exponentialRampToValueAtTime(0.25,t+0.01);
     g.gain.exponentialRampToValueAtTime(0.0001,t+0.5);
-  }catch(e){}
+  }catch(e){}};
+  // a suspended context has a frozen clock, so scheduling before it resumes is silent
+  if(audioCtx.state==="suspended")audioCtx.resume().then(play,()=>{});
+  else play();
 }
 function restDone(){
   if(!S.settings.alert||Date.now()-restEnd>LATE_ALERT)return;
@@ -696,12 +716,13 @@ function restDone(){
 }
 function renderAlertToggle(){
   const b=$("rest-alert"),note=$("rest-alert-note");
-  const on=!!S.settings.alert, blocked=window.Notification&&Notification.permission==="denied";
+  const on=!!S.settings.alert;
+  const canNotify=window.Notification&&Notification.permission==="granted";
   b.setAttribute("aria-pressed",String(on));
   b.textContent=on?"休息結束時提醒：開":"休息結束時提醒：關";
   note.textContent=!on?""
-    :blocked?"系統已封鎖通知，只會響一聲並震動。"
-    :"結束時會響一聲並震動；在背景時也會跳通知。";
+    :canNotify?"結束時會響一聲並震動；在背景時也會跳通知。"
+    :"結束時會響一聲並震動。沒有通知權限，在背景時不會跳通知。";
 }
 $("rest-alert").addEventListener("click",async()=>{
   if(S.settings.alert){S.settings.alert=false;save();renderAlertToggle();return}
@@ -713,12 +734,23 @@ $("rest-alert").addEventListener("click",async()=>{
   toast(window.Notification&&Notification.permission==="granted"
     ?"休息結束時會通知你":"休息結束時會響一聲並震動");
 });
+function clearRestNote(){
+  if(!navigator.serviceWorker)return;
+  navigator.serviceWorker.ready
+    .then(r=>r.getNotifications({tag:"liftsync-rest"}).then(ns=>ns.forEach(n=>n.close())))
+    .catch(()=>{});
+}
 // a throttled or frozen tab stops ticking; catch up the moment it is looked at again
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden||!restEnd)return;
+  if(document.hidden)return;
+  clearRestNote();
+  if(!restEnd)return;
   clearInterval(restIv);tick();if(restEnd>Date.now())restIv=setInterval(tick,250);
 });
 window.addEventListener("pageshow",()=>{if(restEnd)tick()});
+// a rest restored on launch never passed through a tap, so the first touch anywhere
+// has to be the one that builds the audio context — otherwise it can only vibrate
+document.addEventListener("pointerdown",primeAudio,{passive:true});
 const fmtTime=s=>`${pad(Math.floor(s/60))}:${pad(s%60)}`;
 function renderRestSettings(){
   chipRow($("rest-presets"),PRESETS.map(fmtSec),PRESETS.includes(S.settings.rest)?fmtSec(S.settings.rest):null,o=>{S.settings.rest=PRESETS[PRESETS.map(fmtSec).indexOf(o)];save();$("rest-custom").value="";renderRestSettings();if(!restEnd)tick()});
@@ -777,10 +809,10 @@ $("discard").addEventListener("click",()=>$("discard-confirm").hidden=false);
 $("discard-no").addEventListener("click",()=>$("discard-confirm").hidden=true);
 $("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;stopRest();tick();renderDraft()});
 $("finish").addEventListener("click",()=>{
-  const bad=badSet(S.draft.exercises);
-  if(bad){toast(bad);return}
   const ex=S.draft.exercises.map(e=>({name:e.name,sets:e.sets.filter(s=>s.done&&+s.reps>0).map(s=>({kg:+s.kg||0,reps:+s.reps}))})).filter(e=>e.sets.length);
   if(!ex.length){toast("還沒有打勾完成的組。完成一組後按 ✓ 再結束訓練。");return}
+  const bad=badSet(ex);   // rows that were never ticked are discarded, so never judged
+  if(bad){toast(bad);return}
   const before=bests();
   const w={id:"w"+Date.now(),date:S.draft.date,routine:S.draft.routine||null,exercises:ex};
   S.workouts.unshift(w);S.workouts.sort((a,b)=>b.date.localeCompare(a.date));
@@ -938,11 +970,11 @@ $("w-date").addEventListener("change",()=>{
 });
 $("w-cancel").addEventListener("click",()=>{closeWorkout();toast("已取消，紀錄沒有變動")});
 $("w-save").addEventListener("click",()=>{
-  const bad=badSet(wEdit.exercises);
-  if(bad){toast(bad);return}
   const ex=wEdit.exercises.map(e=>({name:e.name,sets:e.sets.filter(st=>+st.reps>0).map(st=>({kg:+st.kg||0,reps:+st.reps}))})).filter(e=>e.sets.length);
   const empty=wEdit.exercises.find(e=>!e.sets.some(st=>+st.reps>0));
   if(empty){toast(`「${empty.name}」沒有任何一組填了次數。要拿掉這個動作請按它的「移除」。`);return}
+  const bad=badSet(ex);   // blank rows are dropped below, so they are not judged here
+  if(bad){toast(bad);return}
   if(!ex.length){toast("這筆紀錄沒有東西可以存。要整筆移除請按「刪除這筆」。");return}
   const i=S.workouts.findIndex(w=>w.id===wEdit.id);
   if(i<0){toast("找不到這筆紀錄，可能已經被刪掉了");closeWorkout();return}
@@ -1069,7 +1101,7 @@ if(document.documentElement.dataset.build==="pwa"){
 $("clear-sample").addEventListener("click",()=>$("clear-confirm").hidden=false);
 $("clear-no").addEventListener("click",()=>$("clear-confirm").hidden=true);
 $("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],draft:null,sample:false,custom:S.custom,routines:S.routines,settings:S.settings};save();
-  wEdit=null;stopRest();$("clear-confirm").hidden=true;renderAll();if(activeTab()==="history")renderHistory();toast("已清除範例資料")});
+  wEdit=null;stopRest();$("clear-confirm").hidden=true;renderAll();toast("已清除範例資料")});
 
 function renderAll(){renderSummary();renderPicker();renderRestSettings();renderAlertToggle();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
 renderAll();restoreRest();
