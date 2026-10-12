@@ -804,15 +804,27 @@ function renderDraft(){
   S.draft.exercises.forEach((ex,ei)=>{
     const prev=lastSetsFor(ex.name);
     const tb=el("tbody");
-    ex.sets.forEach((s,si)=>{
-      const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0",id:`kg-${ei}-${si}`,"aria-label":`第 ${si+1} 組重量`,value:s.kg});
-      const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0",id:`rp-${ei}-${si}`,"aria-label":`第 ${si+1} 組次數`,value:s.reps});
-      kg.addEventListener("input",()=>{s.kg=kg.value===""?"":+kg.value;save()});
-      rp.addEventListener("input",()=>{s.reps=rp.value===""?"":+rp.value;save()});
-      const ck=el("button",{type:"button",class:"check","aria-pressed":String(!!s.done),"aria-label":`完成第 ${si+1} 組`},"✓");
-      ck.addEventListener("click",()=>{s.done=!s.done;save();renderDraft();if(s.done){primeAudio();startRest(restFor(ex.name))}});
-      tb.append(el("tr",{class:s.done?"done":""},el("td",{class:"num hint"},String(si+1)),el("td",{},kg),el("td",{},rp),el("td",{},ck)));
-    });
+    // One row at a time, so adding or ticking a set only touches that row. Rebuilding the
+    // whole list threw away whichever input had focus, and on a phone losing focus closes
+    // the keyboard — the viewport grows back and the page jumps under your thumb.
+    const row=st=>{
+      const n=ex.sets.indexOf(st)+1;
+      const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${n} 組重量`,value:st.kg});
+      const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0","aria-label":`第 ${n} 組次數`,value:st.reps});
+      kg.addEventListener("input",()=>{st.kg=kg.value===""?"":+kg.value;save()});
+      rp.addEventListener("input",()=>{st.reps=rp.value===""?"":+rp.value;save()});
+      const ck=el("button",{type:"button",class:"check","aria-pressed":String(!!st.done),"aria-label":`完成第 ${n} 組`},"✓");
+      const tr=el("tr",{class:st.done?"done":""},el("td",{class:"num hint"},String(n)),el("td",{},kg),el("td",{},rp),el("td",{},ck));
+      ck.addEventListener("click",()=>{
+        st.done=!st.done;save();
+        tr.classList.toggle("done",st.done);ck.setAttribute("aria-pressed",String(st.done));
+        if(st.done){primeAudio();startRest(restFor(ex.name))}
+      });
+      return tr;
+    };
+    ex.sets.forEach(st=>tb.append(row(st)));
+    const addBtn=el("button",{type:"button",class:"btn ghost"},"＋ 加一組");
+    const delBtn=el("button",{type:"button",class:"btn ghost",style:"color:var(--muted)"},"刪最後一組");
     const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
     const rsel=el("select",{"aria-label":`${ex.name}的休息時間`,id:`rs-${ei}`},
       el("option",{value:""},`跟預設（${fmtSec(S.settings.rest)}）`),...[30,45,60,75,90,120,150,180,240,300].map(v=>el("option",{value:String(v)},fmtSec(v))));
@@ -825,10 +837,21 @@ function renderDraft(){
       prev?el("span",{class:"hint"},"上次："+prev.map(s=>`${s.kg}×${s.reps}`).join("、")):"",
       el("label",{class:"exrest"},"組間休息",rsel),
       el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:28px"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:46px"},""))),tb),
-      el("div",{class:"row"},
-        el("button",{type:"button",class:"btn ghost",onclick:()=>{const l=ex.sets[ex.sets.length-1]||{kg:"",reps:""};ex.sets.push({kg:l.kg,reps:l.reps,done:false});save();renderDraft()}},"＋ 加一組"),
-        ex.sets.length>1?el("button",{type:"button",class:"btn ghost",style:"color:var(--muted)",onclick:()=>{ex.sets.pop();save();renderDraft()}},"刪最後一組"):"")
+      el("div",{class:"row"},addBtn,delBtn)
     );
+    delBtn.hidden=ex.sets.length<2;   // a property, not an attribute: hidden="false" still hides
+    addBtn.addEventListener("click",()=>{
+      const last=ex.sets[ex.sets.length-1]||{kg:"",reps:""};
+      const st={kg:last.kg,reps:last.reps,done:false};
+      ex.sets.push(st);save();
+      tb.append(row(st));delBtn.hidden=ex.sets.length<2;
+    });
+    delBtn.addEventListener("click",()=>{
+      if(ex.sets.length<2)return;
+      ex.sets.pop();save();
+      if(tb.lastElementChild)tb.lastElementChild.remove();
+      delBtn.hidden=ex.sets.length<2;
+    });
     list.append(card);
   });
 }
@@ -974,22 +997,41 @@ function renderWorkoutEdit(){
   if(!wEdit.exercises.length)list.append(el("div",{class:"panel empty"},"這筆紀錄裡沒有動作了。從下方加入動作，或按「刪除這筆」整筆移除。"));
   wEdit.exercises.forEach((ex,ei)=>{
     const tb=el("tbody");
-    ex.sets.forEach((st,si)=>{
-      const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${si+1} 組重量`,value:st.kg});
-      const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0","aria-label":`第 ${si+1} 組次數`,value:st.reps});
+    // same reason as the draft: a rebuild would drop the field being typed into
+    const renumber=()=>[...tb.children].forEach((tr,i)=>{
+      tr.firstElementChild.textContent=String(i+1);
+      const [a,b]=tr.querySelectorAll("input");
+      a.setAttribute("aria-label",`第 ${i+1} 組重量`);b.setAttribute("aria-label",`第 ${i+1} 組次數`);
+      tr.querySelector("button").setAttribute("aria-label",`刪除第 ${i+1} 組`);
+    });
+    const row=st=>{
+      const n=ex.sets.indexOf(st)+1;
+      const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${n} 組重量`,value:st.kg});
+      const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0","aria-label":`第 ${n} 組次數`,value:st.reps});
       kg.addEventListener("input",()=>{st.kg=kg.value===""?"":+kg.value});
       rp.addEventListener("input",()=>{st.reps=rp.value===""?"":+rp.value});
-      tb.append(el("tr",{},el("td",{class:"num hint"},String(si+1)),el("td",{},kg),el("td",{},rp),
-        el("td",{},el("button",{type:"button",class:"iconbtn","aria-label":`刪除第 ${si+1} 組`,
-          onclick:()=>{ex.sets.splice(si,1);renderWorkoutEdit()}},"✕"))));
-    });
+      const x=el("button",{type:"button",class:"iconbtn","aria-label":`刪除第 ${n} 組`},"✕");
+      const tr=el("tr",{},el("td",{class:"num hint"},String(n)),el("td",{},kg),el("td",{},rp),el("td",{},x));
+      x.addEventListener("click",()=>{
+        const i=ex.sets.indexOf(st);        // by identity: earlier rows may already be gone
+        if(i>=0)ex.sets.splice(i,1);
+        tr.remove();renumber();
+      });
+      return tr;
+    };
+    ex.sets.forEach(st=>tb.append(row(st)));
+    const wAdd=el("button",{type:"button",class:"btn ghost"},"＋ 加一組");
     const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
     list.append(el("div",{class:"panel ex","data-g":meta.g},
       el("div",{class:"row spread"},el("div",{class:"row"},el("h3",{},ex.name),el("span",{class:"tag"},`${meta.g}${meta.eq?" · "+meta.eq:""}`)),
         el("button",{type:"button",class:"iconbtn",onclick:()=>{wEdit.exercises.splice(ei,1);renderWorkoutEdit()}},"移除")),
       el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:28px"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:46px"},""))),tb),
-      el("div",{class:"row"},
-        el("button",{type:"button",class:"btn ghost",onclick:()=>{const l=ex.sets[ex.sets.length-1]||{kg:"",reps:""};ex.sets.push({kg:l.kg,reps:l.reps});renderWorkoutEdit()}},"＋ 加一組"))));
+      el("div",{class:"row"},wAdd)));
+    wAdd.addEventListener("click",()=>{
+      const last=ex.sets[ex.sets.length-1]||{kg:"",reps:""};
+      const st={kg:last.kg,reps:last.reps};
+      ex.sets.push(st);tb.append(row(st));
+    });
   });
 }
 $("w-date").addEventListener("change",()=>{
@@ -1161,6 +1203,6 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 </script>
-<!-- LiftSync v1.1.0 -->
+<!-- LiftSync v1.1.1 -->
 </body>
 </html>

@@ -623,6 +623,63 @@ fresh();show("history");
 }
 
 
+/* ============================ 加減組數不重建畫面 ============================ */
+G("加減組數不會重建整個畫面");
+fresh();show("today");
+S.draft={date:ymd(new Date()),exercises:[{name:"臥推",sets:[{kg:60,reps:5,done:false}]}]};
+renderDraft();
+{
+  const card=document.querySelector("#draft-list .panel.ex");
+  const btn=t=>[...card.querySelectorAll("button")].find(b=>b.textContent.indexOf(t)>=0);
+  const firstRow=card.querySelector("tbody tr");
+  const inp=firstRow.querySelector("input");
+  inp.focus();
+  ok("只有一組時「刪最後一組」是隱藏的",btn("刪最後").hidden);
+  btn("加一組").click();
+  ok("加一組後輸入格的焦點還在",document.activeElement===inp);
+  ok("原本那一列沒有被重建",card.querySelector("tbody tr")===firstRow);
+  ok("只多了一列",card.querySelectorAll("tbody tr").length===2);
+  ok("資料也跟著加一組",S.draft.exercises[0].sets.length===2);
+  ok("帶入上一組的數字",S.draft.exercises[0].sets[1].kg===60&&S.draft.exercises[0].sets[1].reps===5);
+  ok("新那列的編號正確",card.querySelectorAll("tbody tr")[1].firstElementChild.textContent==="2");
+  ok("「刪最後一組」跟著出現",!btn("刪最後").hidden);
+  const ck=firstRow.querySelector("button.check");
+  ck.click();
+  ok("打勾後焦點還在",document.activeElement===inp);
+  ok("打勾套上完成樣式",firstRow.classList.contains("done"));
+  ok("打勾更新 aria-pressed",ck.getAttribute("aria-pressed")==="true");
+  ok("打勾開始倒數",restEnd>Date.now());
+  ck.click();
+  ok("再按一次取消打勾",!firstRow.classList.contains("done")&&ck.getAttribute("aria-pressed")==="false");
+  stopRest();
+  btn("刪最後").click();
+  ok("刪最後一組後焦點還在",document.activeElement===inp);
+  ok("列數與資料一起回到一組",card.querySelectorAll("tbody tr").length===1&&S.draft.exercises[0].sets.length===1);
+  ok("「刪最後一組」又隱藏起來",btn("刪最後").hidden);
+  btn("刪最後").click();
+  ok("只剩一組時刪不掉",S.draft.exercises[0].sets.length===1);
+}
+{
+  fresh();show("history");
+  document.querySelectorAll("#hist button.hitem")[0].click();
+  const rows=()=>$("w-list").querySelectorAll(".panel.ex")[0].querySelectorAll("tbody tr");
+  const n0=rows().length, keep=rows()[2].querySelector("input");
+  keep.focus();
+  rows()[1].querySelector("button.iconbtn").click();
+  ok("修改紀錄刪中間一列後焦點還在",document.activeElement===keep);
+  ok("只少一列",rows().length===n0-1,n0+" -> "+rows().length);
+  ok("資料也只少一組",wEdit.exercises[0].sets.length===n0-1);
+  ok("剩下的列重新編號",[...rows()].map(r=>r.firstElementChild.textContent).join(",")==="1,2,3,4",
+     [...rows()].map(r=>r.firstElementChild.textContent).join(","));
+  const add=[...$("w-list").querySelectorAll(".panel.ex")[0].querySelectorAll("button")]
+    .find(b=>b.textContent.indexOf("加一組")>=0);
+  const before=rows().length;
+  add.click();
+  ok("加一組只追加一列",rows().length===before+1);
+  ok("加一組後焦點依然保留",document.activeElement===keep);
+  $("w-cancel").click();
+}
+
 /* ============================ 提示音 ============================ */
 G("提示音實際產生的波形");
 {
