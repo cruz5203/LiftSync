@@ -807,6 +807,8 @@ function renderDraft(){
     // One row at a time, so adding or ticking a set only touches that row. Rebuilding the
     // whole list threw away whichever input had focus, and on a phone losing focus closes
     // the keyboard — the viewport grows back and the page jumps under your thumb.
+    // Rows here are only ever appended or popped at the tail, so a baked-in number stays
+    // correct. Deleting from the middle would need the renumber() that renderWorkoutEdit has.
     const row=st=>{
       const n=ex.sets.indexOf(st)+1;
       const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${n} 組重量`,value:st.kg});

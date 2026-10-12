@@ -663,14 +663,19 @@ renderDraft();
   fresh();show("history");
   document.querySelectorAll("#hist button.hitem")[0].click();
   const rows=()=>$("w-list").querySelectorAll(".panel.ex")[0].querySelectorAll("tbody tr");
-  const n0=rows().length, keep=rows()[2].querySelector("input");
+  const n0=rows().length;
+  // derive everything from the fixture rather than hardcoding seed()'s set count, so
+  // editing the sample program fails here as a fixture problem, not as a renumber bug
+  ok("範例資料第一個動作至少有三組（這段的前提）",n0>=3,String(n0));
+  const keep=rows()[n0-1].querySelector("input");
   keep.focus();
-  rows()[1].querySelector("button.iconbtn").click();
+  rows()[1].querySelector("button.iconbtn").click();   // a row from the middle
   ok("修改紀錄刪中間一列後焦點還在",document.activeElement===keep);
   ok("只少一列",rows().length===n0-1,n0+" -> "+rows().length);
   ok("資料也只少一組",wEdit.exercises[0].sets.length===n0-1);
-  ok("剩下的列重新編號",[...rows()].map(r=>r.firstElementChild.textContent).join(",")==="1,2,3,4",
-     [...rows()].map(r=>r.firstElementChild.textContent).join(","));
+  const seq=[...rows()].map(r=>r.firstElementChild.textContent).join(",");
+  const want=Array.from({length:rows().length},(_,i)=>i+1).join(",");
+  ok("剩下的列重新編號",seq===want,seq+"（期望 "+want+"）");
   const add=[...$("w-list").querySelectorAll(".panel.ex")[0].querySelectorAll("button")]
     .find(b=>b.textContent.indexOf("加一組")>=0);
   const before=rows().length;
