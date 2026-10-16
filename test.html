@@ -700,6 +700,26 @@ const frame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
   $("rest-cfg").click();$("discard").click();$("discard-yes").click();
 }
 
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:LIB.slice(0,4).map(n=>({name:n,sets:[{kg:20,reps:8,done:false},{kg:20,reps:8,done:false}]}))};
+  save();exOpen={};renderDraft();
+  const cards=()=>$("draft-list").querySelectorAll(".panel.ex");
+  ok("前面以外的動作預設收起",cards()[2].classList.contains("collapsed"));
+  cards()[0].querySelectorAll("button.check").forEach(b=>b.click());
+  cards()[1].querySelectorAll("button.check").forEach(b=>b.click());
+  ok("用表格打勾換到下一個動作時，它的卡片會展開",!cards()[2].classList.contains("collapsed")&&!cards()[2].querySelector(".setfocus").hidden);
+  cards()[3].querySelector(".extitle").click();cards()[3].querySelector(".extitle").click();
+  cards()[2].querySelectorAll("button.check").forEach(b=>b.click());
+  ok("自己收起的卡片不會被打開",cards()[3].classList.contains("collapsed"));
+  // the rest has run out, so tick() has stopped; edits after that must still move the line
+  restEnd=Date.now()-1000;restAlerted=true;clearInterval(restIv);tick();
+  ok("休息結束時顯示下一組",$("rest-sub").textContent.includes(LIB[3]),$("rest-sub").textContent);
+  cards()[3].querySelector(".exhead .iconbtn").click();
+  ok("休息結束後移除動作，休息列跟著更新",!$("rest-sub").textContent.includes(LIB[3])&&$("rest-sub").textContent.includes("全部打勾"),$("rest-sub").textContent);
+  stopRest();$("discard").click();$("discard-yes").click();
+}
+
 /* ============================ 無障礙 ============================ */
 G("無障礙");
 fresh();show("history");

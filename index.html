@@ -995,6 +995,14 @@ function activeSet(){
   for(const ex of S.draft.exercises){const i=ex.sets.findIndex(s=>!s.done);if(i>=0)return{ex,st:ex.sets[i],n:i+1}}
   return null;
 }
+// the dock's "下一組" line; tick() stops once a rest ends, so edits to the sets after that
+// have to refresh it themselves (refreshFocus does)
+function syncRestSub(s=restEnd?Math.max(0,Math.ceil((restEnd-Date.now())/1000)):0){
+  const a=activeSet();
+  const nx=a?`下一組：${a.ex.name} 第 ${a.n} 組`:"全部打勾了，可以完成訓練";
+  const sub=!restEnd?"組間休息 · 完成一組後自動倒數":s===0?`休息結束！${nx}`:nx;
+  if($("rest-sub").textContent!==sub)$("rest-sub").textContent=sub;
+}
 function tick(){
   const box=document.querySelector(".restbox");
   const s=restEnd?Math.max(0,Math.ceil((restEnd-Date.now())/1000)):0;
@@ -1004,10 +1012,7 @@ function tick(){
   $("rest-cfg").style.setProperty("--p",restEnd?pct.toFixed(1):"0");
   box.classList.toggle("ready",!!restEnd&&s===0);
   box.classList.toggle("running",!!restEnd&&s>0);
-  const a=activeSet();
-  const nx=a?`下一組：${a.ex.name} 第 ${a.n} 組`:"全部打勾了，可以完成訓練";
-  const sub=!restEnd?"組間休息 · 完成一組後自動倒數":s===0?`休息結束！${nx}`:nx;
-  if($("rest-sub").textContent!==sub)$("rest-sub").textContent=sub;
+  syncRestSub(s);
   // reopening the app re-ticks an already-finished rest, so everything that makes
   // noise has to sit behind the latch or the phone buzzes on every return
   if(restEnd&&s===0&&!restAlerted){
@@ -1127,6 +1132,7 @@ function refreshFocus(){
   $("finish-confirm").hidden=true;
   const a=activeSet();
   focusers.forEach(f=>f(a));
+  syncRestSub();
   if(!S.draft)return;
   let done=0,total=0;S.draft.exercises.forEach(e=>e.sets.forEach(s=>{total++;if(s.done)done++}));
   $("d-prog").textContent=total?`${done} / ${total} 組完成`:"還沒有動作";
@@ -1215,7 +1221,12 @@ function renderDraft(){
       fPrev.textContent=p?`上次 ${p.kg} × ${p.reps}`:"第一次做這個動作";
       fKg.textContent=kgStr(fSt.kg);fRp.textContent=kgStr(fSt.reps);
     };
-    focusers.push(a=>{fSt=a&&a.ex===ex?a.st:null;syncFocus()});
+    focusers.push(a=>{fSt=a&&a.ex===ex?a.st:null;syncFocus();
+      // the next set moved into a card that is closed only by default: open it so its
+      // card is there to use (no scrolling — that would yank the page from under a ✓ tap).
+      // A card closed by hand stays closed.
+      if(fSt&&card.classList.contains("collapsed")&&exOpen[ex.name]!==false){
+        card.classList.remove("collapsed");title.setAttribute("aria-expanded","true")}});
 
     const allDone=ex.sets.length&&ex.sets.every(s=>s.done);
     const open=exOpen[ex.name]!==undefined?exOpen[ex.name]:actIdx<0?!allDone:(ei===actIdx||ei===actIdx+1||(!allDone&&ei<actIdx));
