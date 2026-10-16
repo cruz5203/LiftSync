@@ -839,7 +839,7 @@ function renameEverywhere(from,to){
   };
   S.workouts.forEach(w=>hit(w.exercises));
   S.routines.forEach(r=>hit(r.exercises));
-  if(S.draft){hit(S.draft.exercises);if(S.draft.cur===from)S.draft.cur=to}
+  if(S.draft)hit(S.draft.exercises);
   if(editing)hit(editing.exercises);
   if(wEdit)hit(wEdit.exercises);
   if(S.settings.exRest[from]!==undefined){
@@ -984,11 +984,13 @@ function startRest(sec){restTotal=sec;restEnd=Date.now()+sec*1000;restAlerted=fa
 function stopRest(){restEnd=0;restAlerted=false;clearInterval(restIv);saveRest()}
 // the next set, which the focus card and the dock both point at: the exercise you last
 // ticked a set in while it has sets left (the rack may be busy, so order is not a given),
-// otherwise the first unticked set of the workout. Kept by name in the draft so a relaunch
-// mid-rest lands on the same exercise.
+// otherwise the first unticked set of the workout. "Last" is read off each set's tick time
+// rather than kept as a pointer, so un-ticking a mis-tap falls back to where you were,
+// removing an exercise takes its ticks with it, and a relaunch mid-rest lands on the same one.
 function activeSet(){
   if(!S.draft)return null;
-  const cur=S.draft.cur&&S.draft.exercises.find(e=>e.name===S.draft.cur);
+  let cur=null,at=0;
+  S.draft.exercises.forEach(e=>e.sets.forEach(s=>{if(s.done&&s.at>at){at=s.at;cur=e}}));
   if(cur){const i=cur.sets.findIndex(s=>!s.done);if(i>=0)return{ex:cur,st:cur.sets[i],n:i+1}}
   for(const ex of S.draft.exercises){const i=ex.sets.findIndex(s=>!s.done);if(i>=0)return{ex,st:ex.sets[i],n:i+1}}
   return null;
@@ -1161,9 +1163,9 @@ function renderDraft(){
       const tr=el("tr",{class:st.done?"done":""},el("td",{class:"num hint"},String(n)),el("td",{},kg),el("td",{},rp),el("td",{},ck));
       ck.addEventListener("click",()=>{
         st.done=!st.done;
-        // a mis-tap undone leaves nothing ticked there, so it should not steer the next set
-        if(st.done)S.draft.cur=ex.name;
-        else if(S.draft.cur===ex.name&&!ex.sets.some(s=>s.done))delete S.draft.cur;
+        // strictly increasing, so two taps in the same millisecond still have an order
+        if(st.done)st.at=Math.max(Date.now(),1+Math.max(0,...S.draft.exercises.flatMap(e=>e.sets.map(s=>+s.at||0))));
+        else delete st.at;
         save();
         tr.classList.toggle("done",st.done);ck.setAttribute("aria-pressed",String(st.done));
         if(st.done){primeAudio();startRest(restFor(ex.name))}

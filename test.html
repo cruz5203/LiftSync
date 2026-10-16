@@ -627,7 +627,7 @@ const frame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
   ok("大按鈕卡片在第二個動作",!cards()[1].querySelector(".setfocus").hidden&&cards()[0].querySelector(".setfocus").hidden);
   // what a relaunch mid-rest reads back
   S=normalize(JSON.parse(localStorage.getItem(KEY)));renderDraft();
-  ok("重新開啟後下一組還在同一個動作",activeSet().ex===S.draft.exercises[1],S.draft.cur);
+  ok("重新開啟後下一組還在同一個動作",activeSet().ex===S.draft.exercises[1]);
   cards()[1].querySelectorAll("button.check")[1].click();
   ok("那個動作做完就回到第一個沒做完的",activeSet().ex===S.draft.exercises[0]&&activeSet().n===1);
   stopRest();
@@ -661,9 +661,22 @@ const frame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
     {name:LIB[0],sets:[{kg:60,reps:5,done:false},{kg:60,reps:5,done:false}]},
     {name:LIB[1],sets:[{kg:40,reps:10,done:false},{kg:40,reps:10,done:false}]}]};
   save();renderDraft();
-  const ck=()=>$("draft-list").querySelectorAll(".panel.ex")[1].querySelector("button.check");
-  ck().click();ck().click();stopRest();
-  ok("誤勾又取消，下一組回到原本的動作",activeSet().ex===S.draft.exercises[0],S.draft.cur);
+  const ck=(e,k=0)=>$("draft-list").querySelectorAll(".panel.ex")[e].querySelectorAll("button.check")[k];
+  ck(1).click();ck(1).click();stopRest();
+  ok("誤勾又取消，下一組回到原本的動作",activeSet().ex===S.draft.exercises[0]);
+  // working the second exercise (first one's rack is busy), then a mis-tap on the third:
+  // undoing it must return to the second, not fall back to the first
+  addEx(LIB[2]);S.draft.exercises[2].sets=[{kg:20,reps:8,done:false},{kg:20,reps:8,done:false}];save();renderDraft();
+  ck(1).click();ck(2).click();
+  ok("誤勾到另一個動作時，下一組跟過去",activeSet().ex===S.draft.exercises[2]);
+  ck(2).click();stopRest();
+  ok("取消後回到正在練的動作，不是第一個",activeSet().ex===S.draft.exercises[1]);
+  // removing the exercise you were on, then adding it back fresh, must not let it lead
+  ck(1,1).click();stopRest();
+  $("draft-list").querySelectorAll(".panel.ex")[1].querySelector(".exhead .iconbtn").click();
+  addEx(LIB[1]);
+  ok("移除再加回來的動作不會搶走下一組",activeSet().ex===S.draft.exercises[0],activeSet().ex.name);
+  stopRest();
   $("discard").click();$("discard-yes").click();
 }
 {
