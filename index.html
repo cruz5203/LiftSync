@@ -839,7 +839,7 @@ function renameEverywhere(from,to){
   };
   S.workouts.forEach(w=>hit(w.exercises));
   S.routines.forEach(r=>hit(r.exercises));
-  if(S.draft)hit(S.draft.exercises);
+  if(S.draft){hit(S.draft.exercises);if(S.draft.cur===from)S.draft.cur=to}
   if(editing)hit(editing.exercises);
   if(wEdit)hit(wEdit.exercises);
   if(S.settings.exRest[from]!==undefined){
@@ -984,11 +984,12 @@ function startRest(sec){restTotal=sec;restEnd=Date.now()+sec*1000;restAlerted=fa
 function stopRest(){restEnd=0;restAlerted=false;clearInterval(restIv);saveRest()}
 // the next set, which the focus card and the dock both point at: the exercise you last
 // ticked a set in while it has sets left (the rack may be busy, so order is not a given),
-// otherwise the first unticked set of the workout
-let curEx=null;
+// otherwise the first unticked set of the workout. Kept by name in the draft so a relaunch
+// mid-rest lands on the same exercise.
 function activeSet(){
   if(!S.draft)return null;
-  if(curEx&&S.draft.exercises.includes(curEx)){const i=curEx.sets.findIndex(s=>!s.done);if(i>=0)return{ex:curEx,st:curEx.sets[i],n:i+1}}
+  const cur=S.draft.cur&&S.draft.exercises.find(e=>e.name===S.draft.cur);
+  if(cur){const i=cur.sets.findIndex(s=>!s.done);if(i>=0)return{ex:cur,st:cur.sets[i],n:i+1}}
   for(const ex of S.draft.exercises){const i=ex.sets.findIndex(s=>!s.done);if(i>=0)return{ex,st:ex.sets[i],n:i+1}}
   return null;
 }
@@ -1120,6 +1121,8 @@ let focusers=[];
 // after any tick or edit: move the focus card to the next set and update the counters,
 // touching only text and classes so whichever field has focus keeps it
 function refreshFocus(){
+  // its "N 組沒打勾" is a snapshot; once the sets change it no longer says what finishing drops
+  $("finish-confirm").hidden=true;
   const a=activeSet();
   focusers.forEach(f=>f(a));
   if(!S.draft)return;
@@ -1157,9 +1160,13 @@ function renderDraft(){
       const ck=el("button",{type:"button",class:"check","aria-pressed":String(!!st.done),"aria-label":`完成第 ${n} 組`},icon("check",""));
       const tr=el("tr",{class:st.done?"done":""},el("td",{class:"num hint"},String(n)),el("td",{},kg),el("td",{},rp),el("td",{},ck));
       ck.addEventListener("click",()=>{
-        st.done=!st.done;save();
+        st.done=!st.done;
+        // a mis-tap undone leaves nothing ticked there, so it should not steer the next set
+        if(st.done)S.draft.cur=ex.name;
+        else if(S.draft.cur===ex.name&&!ex.sets.some(s=>s.done))delete S.draft.cur;
+        save();
         tr.classList.toggle("done",st.done);ck.setAttribute("aria-pressed",String(st.done));
-        if(st.done){curEx=ex;primeAudio();startRest(restFor(ex.name))}
+        if(st.done){primeAudio();startRest(restFor(ex.name))}
         refreshFocus();
       });
       rows.set(st,{tr,kg,rp,ck});

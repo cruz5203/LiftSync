@@ -625,6 +625,9 @@ const frame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
   ok("先做第二個動作，下一組跟著它",activeSet().ex===S.draft.exercises[1]&&activeSet().n===2);
   ok("休息列也指向它",$("rest-sub").textContent.includes(LIB[1]),$("rest-sub").textContent);
   ok("大按鈕卡片在第二個動作",!cards()[1].querySelector(".setfocus").hidden&&cards()[0].querySelector(".setfocus").hidden);
+  // what a relaunch mid-rest reads back
+  S=normalize(JSON.parse(localStorage.getItem(KEY)));renderDraft();
+  ok("重新開啟後下一組還在同一個動作",activeSet().ex===S.draft.exercises[1],S.draft.cur);
   cards()[1].querySelectorAll("button.check")[1].click();
   ok("那個動作做完就回到第一個沒做完的",activeSet().ex===S.draft.exercises[0]&&activeSet().n===1);
   stopRest();
@@ -632,6 +635,12 @@ const frame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
   ok("還有沒打勾的組要先確認",!!S.draft&&!$("finish-confirm").hidden&&$("finish-msg").textContent.includes("2 組"),$("finish-msg").textContent);
   $("finish-no").click();
   ok("按繼續練什麼都不動",!!S.draft&&$("finish-confirm").hidden);
+  $("finish").click();
+  cards()[0].querySelector(".exfoot .btn").click();
+  ok("確認中改了組數，舊的確認就收起來",$("finish-confirm").hidden);
+  $("finish").click();renderAll();
+  ok("重畫整個畫面（例如匯入）也會收起確認",$("finish-confirm").hidden);
+  S.draft.exercises[0].sets.pop();save();renderDraft();
   const n=S.draft.exercises.length;
   addEx(LIB[0]);
   ok("同一個動作不會加兩次",S.draft.exercises.length===n&&$("toast").textContent.includes("已經有"),$("toast").textContent);
@@ -645,6 +654,17 @@ const frame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
   S.draft.exercises.forEach(e=>e.sets.forEach(s=>s.done=true));save();
   $("finish").click();
   ok("全部打勾就直接完成",S.draft===null);
+}
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[
+    {name:LIB[0],sets:[{kg:60,reps:5,done:false},{kg:60,reps:5,done:false}]},
+    {name:LIB[1],sets:[{kg:40,reps:10,done:false},{kg:40,reps:10,done:false}]}]};
+  save();renderDraft();
+  const ck=()=>$("draft-list").querySelectorAll(".panel.ex")[1].querySelector("button.check");
+  ck().click();ck().click();stopRest();
+  ok("誤勾又取消，下一組回到原本的動作",activeSet().ex===S.draft.exercises[0],S.draft.cur);
+  $("discard").click();$("discard-yes").click();
 }
 {
   fresh();show("today");
