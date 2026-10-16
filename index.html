@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LiftSync</title>
 <meta name="description" content="LiftSync — 重訓節奏與數據同步：課表範本、組間休息計時、進度統計與備份。">
-<meta name="theme-color" content="#16201d">
+<meta name="theme-color" content="#f1f2ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1210" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/rounded/icon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="icons/rounded/icon-16.png">
@@ -18,7 +19,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="LiftSync">
 <style>
-:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 img{max-width:100%}
 [hidden]{display:none!important}
@@ -29,150 +30,349 @@ input,select{font-size:16px!important} /* stops iOS zooming into fields */
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
-/* Layout: one-column phone app, three tabs (今天 / 紀錄 / 進度) behind a fixed bottom bar; muscle groups coded in competition bumper-plate colors */
+/* Layout: one-column phone app, three tabs (今天 / 紀錄 / 進度) behind a fixed bottom bar.
+   Look: chalk ground, iron-black blocks, one lime signal colour. Muscle groups keep the
+   competition bumper-plate colours. While a workout runs, the rest timer docks above the
+   tab bar where the thumb already is, and the exercise library opens as a bottom sheet. */
 :root{
-  --bg:#eef0ee; --surface:#ffffff; --sunken:#e2e6e4; --line:#cfd5d2;
-  --fg:#16201d; --muted:#5b6762;
-  --accent:#1f4fd1; --accent-ink:#ffffff;
+  --bg:#f1f2ee; --surface:#ffffff; --sunken:#f1f2ee; --sunken-2:#e7e9e3;
+  --line:#e0e3dc; --line-soft:#eef0eb; --line-strong:#cdd2ca;
+  --fg:#111513; --muted:#5d6762;
+  --ink:#111513; --ink-fg:#f1f2ee; --ink-muted:#a9b2ad; --ink-2:#262c29; --ink-line:#2a312d;
+  --lime:#c9f23a; --lime-ink:#111513;
+  --btn-bg:#111513; --btn-fg:#f1f2ee; --btn-accent:#c9f23a;
+  --bar:#c5cac2;
   --plate-red:#d23a2e; --plate-blue:#2457c5; --plate-yellow:#d9a514; --plate-green:#2f8f4e; --plate-white:#8a948f;
   --good:#2f8f4e;
+  --warn-bg:#fff8e1; --warn-line:#ebd9a0; --warn-fg:#4f4630;
+  --scrim:rgba(17,21,19,.45);
   --display:"Barlow Condensed","Arial Narrow","Noto Sans TC",sans-serif;
   --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
-  --r:10px;
+  --r:22px; --r-sm:14px;
+  --nav-h:calc(68px + env(safe-area-inset-bottom,0px));
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#111614; --surface:#1a211e; --sunken:#232c28; --line:#33403b;
-  --fg:#e8eeeb; --muted:#9aa7a1; --accent:#6f95ff; --accent-ink:#0c1530;
+  --bg:#0e1210; --surface:#171c19; --sunken:#202622; --sunken-2:#272e2a;
+  --line:#2b332f; --line-soft:#232a26; --line-strong:#3a443f;
+  --fg:#e9eeea; --muted:#9aa6a0;
+  --ink:#1f2622; --ink-fg:#e9eeea; --ink-muted:#9aa6a0; --ink-2:#2b332f; --ink-line:#323b36;
+  --btn-bg:#c9f23a; --btn-fg:#111513; --btn-accent:#111513;
+  --bar:#3a443f;
   --plate-red:#ef6a5e; --plate-blue:#6f95ff; --plate-yellow:#f0c34a; --plate-green:#5cc07e; --plate-white:#b6c0bb; --good:#5cc07e;
+  --warn-bg:#262213; --warn-line:#4a4223; --warn-fg:#e5d9ae;
+  --scrim:rgba(0,0,0,.6);
   color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#111614; --surface:#1a211e; --sunken:#232c28; --line:#33403b;
-  --fg:#e8eeeb; --muted:#9aa7a1; --accent:#6f95ff; --accent-ink:#0c1530;
+  --bg:#0e1210; --surface:#171c19; --sunken:#202622; --sunken-2:#272e2a;
+  --line:#2b332f; --line-soft:#232a26; --line-strong:#3a443f;
+  --fg:#e9eeea; --muted:#9aa6a0;
+  --ink:#1f2622; --ink-fg:#e9eeea; --ink-muted:#9aa6a0; --ink-2:#2b332f; --ink-line:#323b36;
+  --btn-bg:#c9f23a; --btn-fg:#111513; --btn-accent:#111513;
+  --bar:#3a443f;
   --plate-red:#ef6a5e; --plate-blue:#6f95ff; --plate-yellow:#f0c34a; --plate-green:#5cc07e; --plate-white:#b6c0bb; --good:#5cc07e;
+  --warn-bg:#262213; --warn-line:#4a4223; --warn-fg:#e5d9ae;
+  --scrim:rgba(0,0,0,.6);
   color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5}
-.app{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:20px 110px;display:flex;flex-direction:column;gap:18px}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.app{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:20px calc(var(--nav-h) + 32px);display:flex;flex-direction:column;gap:20px}
+/* while a workout is on screen the rest dock sits above the tab bar */
+body:has(#tab-today:not([hidden]) #draft:not([hidden])) .app{padding-bottom:calc(var(--nav-h) + 120px)}
+
+/* ---------- type ---------- */
 header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
-h1{font-family:var(--display);font-weight:800;font-size:2.1rem;letter-spacing:.02em;margin:0;line-height:1}
-h1 small{display:block;font-family:var(--body);font-weight:500;font-size:.8rem;color:var(--muted);letter-spacing:.04em;margin-top:6px}
-h2{font-family:var(--display);font-weight:700;font-size:1.35rem;letter-spacing:.03em;margin:0;text-wrap:balance}
-.eyebrow{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.date{display:block;font-size:13px;font-weight:500;color:var(--muted);letter-spacing:.04em}
+h1{font-family:var(--display);font-weight:800;font-size:2.5rem;letter-spacing:.01em;margin:0;line-height:1}
+h2{font-family:var(--display);font-weight:700;font-size:1.4rem;letter-spacing:.02em;margin:0;text-wrap:balance;line-height:1.15}
+h3{margin:0}
+.eyebrow{font-size:.72rem;letter-spacing:.12em;color:var(--muted);font-weight:700}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.sample{font-size:.75rem;color:var(--muted);background:var(--sunken);border-radius:999px;padding:4px 10px;display:inline-flex;gap:8px;align-items:center}
-.sample button{all:unset;cursor:pointer;color:var(--accent);font-weight:700}
-.sample button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{font-size:.8rem;color:var(--muted)}
+.big{font-family:var(--display);font-weight:700;font-size:2.4rem;line-height:1.05;font-variant-numeric:tabular-nums}
+.big small{font-family:var(--body);font-size:.82rem;font-weight:500;color:var(--muted);margin-left:4px}
+.sechead{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:44px}
+
+/* ---------- surfaces ---------- */
 section.tab{display:flex;flex-direction:column;gap:16px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .spread{justify-content:space-between}
-.btn{font:inherit;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:8px;padding:10px 14px;cursor:pointer}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.btn.ghost{background:transparent;border-color:transparent;color:var(--accent);padding-inline:6px}
-.btn.wide{width:100%;padding-block:14px;font-size:1rem}
-.btn:focus-visible,.iconbtn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:2px;min-width:0}
-.stat b{font-family:var(--display);font-size:1.7rem;line-height:1.1;font-weight:700;font-variant-numeric:tabular-nums}
-.stat span{font-size:.75rem;color:var(--muted)}
-/* exercise card */
-.ex{border-left:6px solid var(--plate-white)}
-.ex[data-g="腿"]{border-left-color:var(--plate-red)}
-.ex[data-g="胸"]{border-left-color:var(--plate-blue)}
-.ex[data-g="背"]{border-left-color:var(--plate-green)}
-.ex[data-g="肩"]{border-left-color:var(--plate-yellow)}
-.ex h3{margin:0;font-size:1.05rem}
-.tag{font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--sunken);color:var(--muted)}
-.sets{width:100%;border-collapse:collapse}
-.sets th{font-size:.72rem;color:var(--muted);font-weight:700;text-align:left;padding:4px 4px}
-.sets td{padding:4px}
-.sets input{width:100%;font:inherit;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1rem;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);min-width:0}
+.sample{font-size:.8rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:0 4px 0 12px;height:36px;display:inline-flex;gap:4px;align-items:center;flex:none}
+.sample button{border:0;background:none;padding:0 10px;height:34px;color:var(--fg);font-weight:700;border-radius:999px}
+.confirm{background:var(--sunken-2);border-radius:var(--r-sm);padding:12px 14px;font-size:.88rem}
+
+/* ---------- buttons ---------- */
+.btn{font-weight:700;border:1px solid var(--line-strong);background:var(--surface);color:var(--fg);border-radius:var(--r-sm);min-height:44px;padding:0 16px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.btn.primary{background:var(--btn-bg);border-color:var(--btn-bg);color:var(--btn-fg)}
+.btn.primary .go{width:26px;height:26px;border-radius:50%;background:var(--lime);color:var(--lime-ink);display:inline-flex;align-items:center;justify-content:center}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--fg);padding-inline:8px}
+.btn.quiet{background:var(--sunken);border-color:var(--sunken)}
+.btn.wide{width:100%;min-height:54px;font-size:1rem}
+.btn.dashed{border:1.5px dashed var(--line-strong);background:transparent;min-height:56px;width:100%;border-radius:18px}
+.btn svg,.iconbtn svg{flex:none}
+.iconbtn{border:0;background:transparent;color:var(--muted);min-width:44px;min-height:44px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;padding:0 8px}
+.iconbtn:hover{background:var(--sunken)}
+.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- chips ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:.85rem;font-weight:700;min-height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);color:var(--fg);font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--plate-white);flex:none;display:inline-block}
+[data-g="腿"].dot,[data-g="臀"].dot{background:var(--plate-red)}[data-g="胸"].dot{background:var(--plate-blue)}[data-g="背"].dot{background:var(--plate-green)}[data-g="肩"].dot{background:var(--plate-yellow)}
+.plates{display:flex;gap:3px;align-items:flex-end;flex:none}
+.plates i{display:block;width:7px;border-radius:2px;background:var(--plate-white)}
+.plates i[data-g="腿"],.plates i[data-g="臀"],.plate[data-g="腿"],.plate[data-g="臀"]{background:var(--plate-red)}
+.plates i[data-g="胸"],.plate[data-g="胸"]{background:var(--plate-blue)}
+.plates i[data-g="背"],.plate[data-g="背"]{background:var(--plate-green)}
+.plates i[data-g="肩"],.plate[data-g="肩"]{background:var(--plate-yellow)}
+
+/* ---------- today: week card ---------- */
+.week{background:var(--ink);color:var(--ink-fg);border-radius:var(--r);padding:18px 16px;display:flex;flex-direction:column;gap:16px}
+.week .wk-h{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--ink-muted)}
+.week .wk-h b{letter-spacing:.12em}
+.days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center}
+.days span{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;color:var(--ink-muted)}
+.days i{font-style:normal;width:36px;height:36px;border-radius:50%;background:var(--ink-2);color:var(--ink-muted);font-family:var(--mono);font-size:13px;display:flex;align-items:center;justify-content:center}
+.days .on i{background:var(--lime);color:var(--lime-ink)}
+.days .today{color:var(--ink-fg);font-weight:700}
+.days .today i{background:transparent;box-shadow:inset 0 0 0 2px var(--ink-fg);color:var(--ink-fg);font-weight:600}
+.days .today.on i{background:var(--lime);box-shadow:none;color:var(--lime-ink)}
+.wk-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;border-top:1px solid var(--ink-line);padding-top:14px}
+.wk-stats div{display:flex;flex-direction:column;min-width:0}
+.wk-stats b{font-family:var(--display);font-weight:700;font-size:1.9rem;line-height:1.05;font-variant-numeric:tabular-nums}
+.wk-stats span{font-size:12px;color:var(--ink-muted)}
+.wk-stats .lime{color:var(--lime)}
+
+/* ---------- today: routines ---------- */
+#routines{display:flex;flex-direction:column;gap:10px}
+.rcard{min-width:0}
+.rcard.hero{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:14px}
+.rcard.hero h3{font-family:var(--display);font-weight:700;font-size:1.9rem;line-height:1.05;letter-spacing:.01em}
+.rcard.hero .plates{height:34px}
+.rcard.hero ul{margin:0;padding:0;list-style:none}
+.rcard.hero li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)}
+.rcard.hero li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcard.hero li .num{font-size:13px;color:var(--muted)}
+.rcard.hero .acts{display:flex;gap:10px}
+.rcard.hero .acts .btn.primary{flex:1;min-height:56px;font-size:1.05rem;border-radius:16px}
+.rcard.hero .acts .iconbtn{width:56px;height:56px;border:1px solid var(--line-strong);border-radius:16px;color:var(--fg)}
+.rgroup{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.rcard.rrow{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px}
+.rcard.rrow+.rcard.rrow{border-top:1px solid var(--line-soft)}
+.rcard.rrow .plates{height:26px}.rcard.rrow .plates i{width:6px}
+.rcard.rrow .tx{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.rcard.rrow .tx b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcard.rrow .btn{min-height:44px;border-radius:22px;padding:0 18px;flex:none}
+
+/* ---------- workout ---------- */
+.dhead{position:sticky;top:0;z-index:20;margin-inline:-16px;padding:10px 16px 12px;background:var(--bg);display:flex;flex-direction:column;gap:10px}
+.dhead .row{flex-wrap:nowrap}
+.dhead .tt{flex:1;min-width:0;display:flex;flex-direction:column}
+.dhead h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhead .btn.primary{color:var(--btn-accent);border-radius:22px;flex:none}
+.pbar{height:4px;border-radius:2px;background:var(--sunken-2);overflow:hidden}
+.pbar i{display:block;height:100%;width:0;background:var(--fg);border-radius:2px;transition:width .2s}
+.ex{gap:10px;padding:14px 14px 8px}
+.exhead{display:flex;align-items:center;gap:10px}
+.plate{width:10px;height:30px;border-radius:3px;background:var(--plate-white);flex:none}
+.extitle{flex:1;min-width:0;border:0;background:none;padding:4px 0;text-align:left;display:flex;flex-direction:column;line-height:1.2;border-radius:8px}
+.extitle h3{font-family:var(--display);font-weight:700;font-size:1.45rem;line-height:1.1;overflow-wrap:anywhere}
+.extitle .tag{font-size:12px;color:var(--muted)}
+.exprog{font-family:var(--mono);font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--sunken);flex:none}
+.exprog.full{background:var(--btn-bg);color:var(--btn-accent)}
+.ex.collapsed{padding-bottom:14px}
+.ex.collapsed .exbody{display:none}
+.exbody{display:flex;flex-direction:column;gap:8px}
+.exinfo{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pill{font-size:12px;color:var(--muted);background:var(--sunken);border-radius:8px;padding:5px 10px}
+.exrest{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;background:var(--sunken);border-radius:8px;padding:0 0 0 10px}
+.exrest select{border:0;background:transparent;padding:5px 8px 5px 2px;font-size:12px!important;font-weight:700;color:var(--fg)}
+.sets{width:100%;border-collapse:separate;border-spacing:0 4px}
+.sets th{font-size:.72rem;color:var(--muted);font-weight:700;text-align:left;padding:0 4px}
+.sets td{padding:0 3px}
+.sets td:first-child{text-align:center;font-family:var(--mono);font-size:13px;color:var(--muted)}
+.sets input{width:100%;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;padding:9px 8px;border:1px solid var(--line);border-radius:10px;background:var(--sunken);color:var(--fg);min-width:0}
 .sets tr.done input{background:transparent;border-color:transparent;color:var(--muted)}
-.check{width:38px;height:38px;border-radius:8px;border:2px solid var(--line);background:transparent;cursor:pointer;color:transparent;font-weight:800;font-size:1rem}
-.check[aria-pressed="true"]{background:var(--good);border-color:var(--good);color:#fff}
-.iconbtn{all:unset;cursor:pointer;color:var(--muted);padding:4px 6px;border-radius:6px;font-size:.85rem}
-.hint{font-size:.78rem;color:var(--muted)}
-.picker{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.picker button{font:inherit;text-align:left;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer;display:flex;align-items:center;gap:8px}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--plate-white);flex:none}
-.dot[data-g="腿"],.dot[data-g="臀"]{background:var(--plate-red)}.dot[data-g="胸"]{background:var(--plate-blue)}.dot[data-g="背"]{background:var(--plate-green)}.dot[data-g="肩"]{background:var(--plate-yellow)}
-.ex[data-g="臀"]{border-left-color:var(--plate-red)}
-/* history */
-.hist{display:flex;flex-direction:column;gap:10px}
-.hitem{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center}
-.hdate{font-family:var(--display);text-align:center;line-height:1;border-right:1px solid var(--line);padding-right:10px}
-.hdate b{display:block;font-size:1.6rem;font-weight:700}
-.hdate span{font-size:.75rem;color:var(--muted)}
+.sets tr.next td{background:var(--sunken)}
+.sets tr.next td:first-child{border-radius:10px 0 0 10px;color:var(--fg);font-weight:600}
+.sets tr.next td:last-child{border-radius:0 10px 10px 0}
+.sets tr.next input{background:var(--surface)}
+.check{width:44px;height:44px;border-radius:12px;border:2px solid var(--line-strong);background:var(--surface);color:transparent;display:flex;align-items:center;justify-content:center;padding:0}
+.check svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.check[aria-pressed="true"]{background:var(--btn-bg);border-color:var(--btn-bg);color:var(--btn-accent)}
+.exfoot{display:flex;border-top:1px solid var(--line-soft);margin-top:2px}
+.exfoot .btn{flex:1}
+/* the next set to lift, in thumb-sized controls */
+.setfocus{border:2px solid var(--fg);border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:12px;background:var(--sunken)}
+.sf-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sf-top b{font-size:15px}
+.sf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.stepper{display:flex;flex-direction:column;gap:4px;min-width:0}
+.stepper .lbl{font-size:12px;color:var(--muted);font-weight:500}
+.sbox{display:flex;align-items:center;height:54px;background:var(--surface);border:1px solid var(--line-strong);border-radius:14px;min-width:0}
+.sbox button{width:44px;height:52px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;flex:none;border-radius:13px}
+.sbox output{flex:1;min-width:0;text-align:center;font-family:var(--mono);font-size:1.2rem;font-weight:600;overflow:hidden}
+.setfocus .btn.primary{color:var(--btn-accent);min-height:54px;border-radius:16px;font-size:1rem}
+
+/* rest dock — the countdown is a deadline, see tick() */
+.restbox{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + 10px);max-width:536px;margin:0 auto;z-index:31;background:var(--ink);color:var(--ink-fg);border-radius:22px;padding:10px;display:flex;flex-direction:column;gap:10px;box-shadow:0 12px 30px rgba(0,0,0,.28)}
+.rmain{display:flex;align-items:center;gap:4px}
+.ring{--p:0;width:48px;height:48px;border-radius:50%;border:0;padding:0;flex:none;margin-right:6px;background:conic-gradient(var(--lime) calc(var(--p)*1%),var(--ink-2) 0);display:flex;align-items:center;justify-content:center;color:var(--lime)}
+.ring span{width:38px;height:38px;border-radius:50%;background:var(--ink);display:flex;align-items:center;justify-content:center}
+.ring[aria-expanded="true"] span{background:var(--ink-2)}
+.rtext{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15}
+.restbox .timer{font-family:var(--mono);font-size:1.6rem;font-weight:600;color:var(--lime);font-variant-numeric:tabular-nums}
+.restbox:not(.running):not(.ready) .timer{color:var(--ink-fg)}
+.rsub{font-size:12px;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.restbox.ready .rsub{color:var(--lime);font-weight:700}
+.rbtn{min-width:44px;height:44px;border:0;border-radius:12px;background:var(--ink-2);color:var(--ink-fg);font-family:var(--mono);font-size:13px;font-weight:600;flex:none;padding:0 6px}
+.rbtn.skip{font-family:var(--body);font-size:14px;font-weight:700;background:transparent;padding:0 8px}
+.restbox:not(.running):not(.ready) .rbtn.skip{display:none}
+.restbar{height:3px;background:var(--ink-2);border-radius:2px;overflow:hidden;margin:0 4px}
+.restbar i{display:block;height:100%;width:0;background:var(--lime)}
+.restbox:not(.running) .restbar{display:none}
+.rsettings{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--ink-line);padding:12px 4px 4px;font-size:13px}
+.rsettings .chip{background:var(--ink-2);border-color:var(--ink-2);color:var(--ink-fg)}
+.rsettings .chip[aria-pressed="true"]{background:var(--lime);border-color:var(--lime);color:var(--lime-ink)}
+.rsettings .hint{color:var(--ink-muted)}
+.rsettings .mini{background:var(--ink-2);border-color:var(--ink-line);color:var(--ink-fg)}
+
+/* ---------- lists / editors ---------- */
+.mini{width:72px;font-family:var(--mono);padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--sunken);color:var(--fg)}
+.field{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--sunken);color:var(--fg)}
+.rlist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
+.rlist li{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line-soft)}
+.rlist li:first-child{border-top:0}
+.rlist li .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rlist .mini{width:58px}
+.ord{display:flex}
+.ord .iconbtn{min-width:40px;padding:0}
+.empty{color:var(--muted);text-align:center;padding:24px 12px}
+
+/* ---------- exercise picker (bottom sheet) ---------- */
+#scrim{position:fixed;inset:0;background:var(--scrim);z-index:40}
+.sheet{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:560px;height:88vh;height:88dvh;z-index:41;background:var(--surface);border-radius:26px 26px 0 0;display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,.2);transform:translateY(105%);visibility:hidden}
+.sheet.open{transform:none;visibility:visible}
+@media (prefers-reduced-motion:no-preference){.sheet{transition:transform .25s ease,visibility .25s}}
+.sh-head{padding:10px 16px 12px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--line-soft)}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line-strong);align-self:center}
+.searchbox{display:flex;align-items:center;gap:10px;height:48px;padding:0 14px;border-radius:var(--r-sm);background:var(--sunken);color:var(--muted)}
+.searchbox input{flex:1;min-width:0;border:0;background:transparent;color:var(--fg);outline:none}
+.scroller{display:flex;gap:6px;overflow-x:auto;margin:0 -16px;padding:0 16px;flex-wrap:nowrap;scrollbar-width:none}
+.scroller .chip{flex:none;min-height:40px}
+.eqtabs{display:flex;gap:16px;overflow-x:auto;margin:0 -16px;padding:0 16px;scrollbar-width:none}
+.eqtabs .chip{flex:none;border:0;border-radius:0;background:none;padding:0;min-height:32px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent}
+.eqtabs .chip[aria-pressed="true"]{color:var(--fg);font-weight:700;border-bottom-color:var(--fg);background:none}
+.sh-body{flex:1;min-height:0;overflow-y:auto;padding:6px 16px 16px;display:flex;flex-direction:column;gap:8px;overscroll-behavior:contain}
+.sh-foot{border-top:1px solid var(--line);padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px}
+.sh-foot .btn{flex:1}
+.sh-foot #custom-open{flex:2}
+.picker{display:flex;flex-direction:column}
+.picker .sec{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--muted);padding:12px 0 4px}
+.prow{display:flex;align-items:center;gap:12px;min-height:62px;padding:0;border:0;border-bottom:1px solid var(--line-soft);background:transparent;text-align:left;width:100%}
+.prow .tx{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.35}
+.prow .pn{font-size:16px;font-weight:500}
+.prow .pe{font-size:12px;color:var(--muted)}
+.prow .add{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line-strong);display:flex;align-items:center;justify-content:center;flex:none}
+.prow.recent .pn{font-weight:700}
+.prow.recent .add{background:var(--btn-bg);border-color:var(--btn-bg);color:var(--btn-accent)}
+.prow .have{height:30px;padding:0 10px;border-radius:15px;background:var(--sunken);font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;flex:none;color:var(--muted)}
+.picker .more{justify-content:center;font-weight:700;min-height:52px;border:0;background:none;width:100%}
+.custom{display:flex;flex-direction:column;gap:8px;background:var(--sunken);padding:12px;border-radius:var(--r-sm)}
+.custom select{padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.custom .field{background:var(--surface)}
+#custom-box{background:var(--sunken);padding:12px;border-radius:var(--r-sm)}
+
+/* ---------- history ---------- */
+.hist{display:flex;flex-direction:column;gap:18px}
+.hgroup{display:flex;flex-direction:column;gap:8px}
+.hghead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0 4px;font-size:14px;font-weight:700}
+.hghead .hint{font-weight:500}
+.hcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+button.hitem{display:grid;grid-template-columns:44px minmax(0,1fr) auto 18px;gap:12px;align-items:center;width:100%;padding:14px 12px 14px 14px;border:0;background:transparent;color:inherit;text-align:left;font:inherit}
+button.hitem+button.hitem{border-top:1px solid var(--line-soft)}
+button.hitem:hover{background:var(--sunken)}
+.hdate{display:flex;flex-direction:column;align-items:center;line-height:1}
+.hdate b{font-family:var(--display);font-weight:700;font-size:1.9rem}
+.hdate span{font-size:12px;color:var(--muted);margin-top:3px}
 .hmeta{min-width:0;display:flex;flex-direction:column;gap:4px}
-.hmeta .dots{display:flex;gap:4px;flex-wrap:wrap}
-.hlist{font-size:.85rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hvol{text-align:right;font-size:.85rem}
-.hvol .num{display:block;font-size:1rem;font-weight:600}
-button.hitem{grid-template-columns:56px 1fr auto 14px;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer}
-button.hitem:hover,button.hitem:focus-visible{border-color:var(--muted)}
-.hchev{color:var(--muted);font-size:1.1rem;line-height:1}
-.bwlist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
-.bwlist li{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:6px 10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;font-size:.9rem}
-.bwlist .mini{width:72px}
-/* charts */
+.hname{display:flex;align-items:center;gap:6px;min-width:0}
+.hname span:first-child{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prtag{flex:none;font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--btn-bg);color:var(--btn-accent)}
+.hsub{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.hsub .dots{display:flex;gap:3px;flex:none}
+.hsub .dot{width:8px;height:8px}
+.hvol{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
+.hvol .num{font-size:16px;font-weight:600}
+.hvol .hint{font-size:11px}
+.hchev{color:var(--muted)}
+.bwlist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
+.bwlist li{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line-soft);font-size:.9rem}
+.bwlist .mini{width:80px}
+
+/* ---------- charts & progress ---------- */
 .chart{width:100%;height:auto;display:block}
 .chart text{fill:var(--muted);font-family:var(--mono);font-size:10px}
-.chart .grid{stroke:var(--line);stroke-width:1}
-select{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
-.prs{display:grid;grid-template-columns:1fr auto auto;gap:6px 14px;font-size:.9rem}
-.prs .h{font-size:.72rem;color:var(--muted);font-weight:700}
-.bw input{font:inherit;font-family:var(--mono);width:110px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
-/* nav */
-nav.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
-nav.bar .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr)}
-nav.bar button{font:inherit;background:none;border:0;color:var(--muted);padding:10px 0 12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.78rem;font-weight:700}
-nav.bar svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-nav.bar button[aria-current="page"]{color:var(--accent)}
-nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px}
-.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.9rem;font-weight:500;max-width:calc(100% - 32px);z-index:6}
-.timer{font-family:var(--mono);font-size:.9rem;font-weight:600}
-.empty{color:var(--muted);text-align:center;padding:24px 8px}
-.restbox{position:sticky;top:env(safe-area-inset-top,0px);z-index:3;gap:8px;padding-block:12px}
-.restbox .timer{font-size:1.4rem;min-width:4.2ch;text-align:center}
-.restbox.ready .timer{color:var(--good)}
-.restbar{height:4px;background:var(--sunken);border-radius:2px;overflow:hidden}
-.restbar i{display:block;height:100%;width:0;background:var(--accent)}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{font:inherit;font-size:.8rem;font-weight:700;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer;font-variant-numeric:tabular-nums}
-.chip[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
-.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.mini{width:68px;font:inherit;font-family:var(--mono);padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
-.search,.custom input[type=text]{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
-.custom{display:flex;flex-direction:column;gap:8px;background:var(--sunken);padding:12px;border-radius:8px}
-.picker button{flex-direction:column;align-items:flex-start;gap:2px}
-.picker .pn{display:flex;align-items:center;gap:8px;font-weight:500;line-height:1.3}
-.picker .pe{font-size:.72rem;color:var(--muted);padding-left:18px}
-.picker .more{grid-column:1/-1;justify-content:center;align-items:center;color:var(--accent);font-weight:700}
-.routines{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
-.rcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
-.rcard h3{margin:0;font-family:var(--display);font-size:1.3rem;font-weight:700;letter-spacing:.02em}
-.rcard .plates{display:flex;gap:3px;align-items:center;height:22px}
-.rcard .plates i{width:7px;border-radius:2px;background:var(--plate-white)}
-.rcard .plates i[data-g="腿"],.rcard .plates i[data-g="臀"]{background:var(--plate-red)}.rcard .plates i[data-g="胸"]{background:var(--plate-blue)}.rcard .plates i[data-g="背"]{background:var(--plate-green)}.rcard .plates i[data-g="肩"]{background:var(--plate-yellow)}
-.rcard ul{margin:0;padding:0;list-style:none;font-size:.85rem;color:var(--muted);display:flex;flex-direction:column;gap:2px}
-.rcard ul li{display:flex;justify-content:space-between;gap:8px}
-.rcard ul li span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rlist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
-.rlist li{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:8px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--line)}
-.rlist li .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rlist .mini{width:56px}
-.rlist .ord{display:flex;gap:2px}
-.exrest{display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--muted)}
-.exrest select{padding:3px 6px;font-size:.78rem}
-.confirm{background:var(--sunken);border-radius:8px;padding:10px 12px;font-size:.85rem}
+.chart .grid{stroke:var(--line-soft);stroke-width:1}
+.kpi{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.kpi h2{font-family:var(--body);font-size:14px;font-weight:700;color:var(--muted);letter-spacing:0}
+.delta{font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;background:var(--btn-bg);color:var(--btn-accent);white-space:nowrap}
+.selwrap{position:relative;display:flex;align-items:center;flex:none;max-width:60%}
+.selwrap select{appearance:none;-webkit-appearance:none;height:40px;padding:0 34px 0 14px;border-radius:20px;border:1px solid var(--line-strong);background:var(--surface);color:var(--fg);font-weight:700;max-width:100%;text-overflow:ellipsis}
+.selwrap svg{position:absolute;right:12px;pointer-events:none}
+.prs{display:flex;flex-direction:column}
+.prs .pr{display:grid;grid-template-columns:minmax(0,1fr) auto 56px;gap:8px;align-items:center;min-height:46px;border-top:1px solid var(--line-soft);font-size:.92rem}
+.prs .pr>span:first-child{display:flex;align-items:center;gap:10px;min-width:0}
+.prs .pr .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bwform{display:flex;gap:8px}
+.bwform label{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:50px;padding:0 14px;border-radius:var(--r-sm);background:var(--sunken)}
+.bwform input{flex:1;min-width:0;border:0;background:transparent;color:var(--fg);font-family:var(--mono);outline:none}
+.disclose{border:0;border-top:1px solid var(--line-soft);background:none;min-height:46px;padding:0;display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:14px}
+.disclose[aria-expanded="true"] svg{transform:rotate(90deg)}
+#backup.warn{background:var(--warn-bg);border-color:var(--warn-line)}
+#backup.warn .hint{color:var(--warn-fg)}
+.bkhead{display:flex;gap:12px;align-items:flex-start}
+.bkicon{width:40px;height:40px;border-radius:12px;background:var(--ink);color:var(--plate-yellow);display:flex;align-items:center;justify-content:center;flex:none}
+.bkhead h2{font-family:var(--body);font-size:16px;font-weight:700;letter-spacing:0}
+
+/* ---------- nav & toast ---------- */
+nav.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);z-index:30}
+nav.bar .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);padding:0 12px}
+nav.bar button{background:none;border:0;color:var(--muted);height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:700}
+nav.bar button span{width:60px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center}
+nav.bar svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+nav.bar button[aria-current="page"]{color:var(--fg)}
+nav.bar button[aria-current="page"] span{background:var(--lime);color:var(--lime-ink)}
+nav.bar button:focus-visible{outline-offset:-4px}
+.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 12px);transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:11px 16px;border-radius:14px;font-size:.9rem;font-weight:500;max-width:calc(100% - 32px);width:max-content;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+body:has(#tab-today:not([hidden]) #draft:not([hidden])) .toast{bottom:calc(var(--nav-h) + 96px)}
+body:has(.sheet.open) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 @media (prefers-reduced-motion:no-preference){.check{transition:background .15s}}
 </style>
 
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+</svg>
+
 <div class="app">
   <header class="top">
-    <h1>LiftSync<small id="today-label"></small></h1>
-    <span class="sample" id="sample-badge" hidden>範例資料 <button id="clear-sample" type="button">清除</button></span>
+    <div><span class="date" id="today-label"></span><h1 id="page-title">今天</h1></div>
+    <span class="sample" id="sample-badge" hidden>範例資料<button id="clear-sample" type="button">清除</button></span>
   </header>
   <div class="confirm" id="clear-confirm" hidden>
     <div class="row spread"><span>要刪除所有範例紀錄，從空白開始嗎？</span>
@@ -181,26 +381,29 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
 
   <!-- TODAY -->
   <section class="tab" id="tab-today">
-    <div class="stats3">
-      <div class="stat"><span>本週訓練</span><b class="num" id="s-week">0</b><span>次</span></div>
-      <div class="stat"><span>本週總量</span><b class="num" id="s-vol">0</b><span>公斤</span></div>
-      <div class="stat"><span>連續週數</span><b class="num" id="s-streak">0</b><span>週有練</span></div>
-    </div>
-
-    <div id="no-draft" style="display:flex;flex-direction:column;gap:12px">
-      <div class="row spread"><h2>今天練什麼？</h2><button class="btn ghost" id="r-new" type="button">＋ 新增範本</button></div>
-      <div class="routines" id="routines"></div>
-      <button class="btn wide" id="start" type="button">空白訓練，自己挑動作</button>
+    <div id="no-draft" style="display:flex;flex-direction:column;gap:20px">
+      <section class="week" aria-label="本週概況">
+        <div class="wk-h"><b>本週</b><span class="num" id="wk-range"></span></div>
+        <div class="days" id="wk-days"></div>
+        <div class="wk-stats">
+          <div><b id="s-week">0</b><span>次訓練</span></div>
+          <div><b id="s-vol">0</b><span>公斤總量</span></div>
+          <div><b class="lime" id="s-streak">0</b><span>週連續有練</span></div>
+        </div>
+      </section>
+      <div id="routines"><button class="btn ghost" id="r-new" type="button"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>新增範本</button></div>
+      <button class="btn dashed" id="start" type="button"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>空白訓練，自己挑動作</button>
     </div>
 
     <div id="r-edit" hidden style="display:flex;flex-direction:column;gap:12px">
-      <div class="row spread"><h2 id="r-title">新增範本</h2><button class="btn ghost" id="r-cancel" type="button">取消</button></div>
+      <div class="sechead"><h2 id="r-title">新增範本</h2><button class="btn ghost" id="r-cancel" type="button">取消</button></div>
       <div class="panel">
         <label class="eyebrow" for="r-name">範本名稱</label>
-        <input id="r-name" class="search" type="text" maxlength="20" placeholder="例如：推日、腿日、器械全身">
+        <input id="r-name" class="field" type="text" maxlength="20" placeholder="例如：推日、腿日、器械全身">
         <span class="eyebrow">動作與組數</span>
         <ol class="rlist" id="r-list"></ol>
       </div>
+      <button class="btn dashed" id="r-add" type="button"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>加入動作</button>
       <div id="r-picker-slot"></div>
       <div class="row" style="flex-wrap:nowrap">
         <button class="btn" id="r-delete" type="button" style="flex:1">刪除範本</button>
@@ -212,70 +415,84 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
       </div>
     </div>
 
-    <div id="draft" hidden style="display:flex;flex-direction:column;gap:14px">
-      <div class="row spread"><h2 id="draft-title">進行中的訓練</h2><button class="btn ghost" id="save-routine" type="button">存成範本</button></div>
-      <div class="panel restbox">
-        <div class="row spread">
-          <span class="eyebrow">組間休息</span>
-          <span class="row" style="gap:6px">
-            <button type="button" class="iconbtn" id="rest-minus" aria-label="減 15 秒">−15</button>
-            <span class="timer num" id="rest" aria-live="polite">--:--</span>
-            <button type="button" class="iconbtn" id="rest-plus" aria-label="加 15 秒">+15</button>
-            <button type="button" class="btn ghost" id="rest-skip">略過</button>
-          </span>
+    <div id="draft" hidden style="display:flex;flex-direction:column;gap:12px">
+      <div class="dhead">
+        <div class="row">
+          <div class="tt"><h2 id="draft-title">進行中的訓練</h2><span class="hint" id="d-prog"></span></div>
+          <button class="btn primary" id="finish" type="button">完成訓練</button>
         </div>
-        <div class="restbar" aria-hidden="true"><i id="rest-fill"></i></div>
-        <div class="row" style="gap:6px">
-          <span class="hint">預設</span>
-          <span class="chips" id="rest-presets"></span>
-          <label class="row hint" style="gap:4px">自訂<input id="rest-custom" class="mini" type="number" min="10" max="900" step="5" aria-label="自訂休息秒數">秒</label>
-        </div>
-        <div class="row" style="gap:8px">
-          <button type="button" class="chip" id="rest-alert" aria-pressed="false">休息結束時提醒</button>
-          <span class="hint" id="rest-alert-note"></span>
-        </div>
-        <span class="hint">完成一組按 ✓ 後自動開始倒數。每個動作也可以設定自己的休息時間。</span>
+        <div class="pbar" aria-hidden="true"><i id="d-bar"></i></div>
       </div>
       <div id="draft-list" style="display:flex;flex-direction:column;gap:12px"></div>
-      <div id="d-picker-slot"></div>
-      <div class="panel" id="picker-panel">
-        <div class="row spread"><span class="eyebrow">加入動作</span>
-          <span class="row" style="gap:2px">
-            <button type="button" class="btn ghost" id="custom-manage" hidden>管理自訂</button>
-            <button type="button" class="btn ghost" id="custom-open">＋ 自訂動作</button>
-          </span></div>
-        <form class="custom" id="custom-form" hidden>
-          <input id="c-name" type="text" maxlength="24" placeholder="動作名稱，例如：坐姿推胸機（窄握）" aria-label="動作名稱" required>
-          <div class="row" style="gap:8px">
-            <select id="c-g" aria-label="部位"></select>
-            <select id="c-eq" aria-label="器材"></select>
-            <button type="submit" class="btn primary" id="c-submit">加入動作庫</button>
-            <button type="button" class="btn ghost" id="c-cancel" hidden>取消</button>
-          </div>
-          <span class="hint" id="c-hint" hidden></span>
-        </form>
-        <div id="custom-box" hidden style="display:flex;flex-direction:column;gap:8px">
-          <span class="hint">這些是你自己加的動作。改名字會一起改掉過去的紀錄與範本，所以統計不會斷掉。</span>
-          <ul class="rlist" id="custom-list"></ul>
-          <div class="confirm" id="c-del-confirm" hidden>
-            <div style="display:flex;flex-direction:column;gap:8px">
-              <span id="c-del-msg"></span>
-              <span class="row" style="justify-content:flex-end"><button class="btn ghost" id="c-del-no" type="button">取消</button><button class="btn primary" id="c-del-yes" type="button">從動作庫移除</button></span>
+      <button class="btn dashed" id="d-add" type="button"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>加入動作</button>
+      <div id="d-picker-slot">
+      <div class="sheet" id="picker-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <div class="sh-head">
+          <span class="grab" aria-hidden="true"></span>
+          <div class="row spread" style="flex-wrap:nowrap"><h2 id="sheet-title" style="font-size:1.75rem">加入動作</h2>
+            <button type="button" class="iconbtn" id="sheet-close" aria-label="關閉" style="background:var(--sunken);border-radius:50%;color:var(--fg);margin-right:-6px"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+          <label class="searchbox"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>
+            <input id="search" type="search" placeholder="搜尋，例如：划船、腿、機" aria-label="搜尋動作"></label>
+          <div class="chips scroller" id="f-g" role="group" aria-label="依部位篩選"></div>
+          <div class="chips eqtabs" id="f-eq" role="group" aria-label="依器材篩選"></div>
+        </div>
+        <div class="sh-body">
+          <form class="custom" id="custom-form" hidden>
+            <span class="eyebrow">自訂動作</span>
+            <input id="c-name" class="field" type="text" maxlength="24" placeholder="動作名稱，例如：坐姿推胸機（窄握）" aria-label="動作名稱" required>
+            <div class="row" style="gap:8px">
+              <select id="c-g" aria-label="部位"></select>
+              <select id="c-eq" aria-label="器材"></select>
+              <button type="submit" class="btn primary" id="c-submit">加入動作庫</button>
+              <button type="button" class="btn ghost" id="c-cancel" hidden>取消</button>
+            </div>
+            <span class="hint" id="c-hint" hidden></span>
+          </form>
+          <div id="custom-box" hidden style="display:flex;flex-direction:column;gap:8px">
+            <span class="hint">這些是你自己加的動作。改名字會一起改掉過去的紀錄與範本，所以統計不會斷掉。</span>
+            <ul class="rlist" id="custom-list"></ul>
+            <div class="confirm" id="c-del-confirm" hidden style="background:var(--surface)">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span id="c-del-msg"></span>
+                <span class="row" style="justify-content:flex-end"><button class="btn ghost" id="c-del-no" type="button">取消</button><button class="btn primary" id="c-del-yes" type="button">從動作庫移除</button></span>
+              </div>
             </div>
           </div>
+          <div class="picker" id="picker"></div>
         </div>
-        <input id="search" type="search" class="search" placeholder="搜尋動作，例如：划船、腿、機" aria-label="搜尋動作">
-        <div class="chips" id="f-g" role="group" aria-label="依部位篩選"></div>
-        <div class="chips" id="f-eq" role="group" aria-label="依器材篩選"></div>
-        <div class="picker" id="picker"></div>
+        <div class="sh-foot">
+          <button type="button" class="btn quiet" id="custom-open"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>找不到？自訂動作</button>
+          <button type="button" class="btn" id="custom-manage" hidden>管理自訂</button>
+        </div>
+      </div>
       </div>
       <div class="row" style="flex-wrap:nowrap">
-        <button class="btn" id="discard" type="button" style="flex:1">放棄</button>
-        <button class="btn primary" id="finish" type="button" style="flex:2">完成訓練</button>
+        <button class="btn" id="discard" type="button" style="flex:1;color:var(--muted)">放棄訓練</button>
+        <button class="btn" id="save-routine" type="button" style="flex:1">存成範本</button>
       </div>
       <div class="confirm" id="discard-confirm" hidden>
         <div class="row spread"><span>放棄這次訓練？已填的組數不會保存。</span>
           <span class="row"><button class="btn ghost" id="discard-no" type="button">繼續練</button><button class="btn primary" id="discard-yes" type="button">放棄</button></span></div>
+      </div>
+
+      <div class="restbox" role="group" aria-label="組間休息">
+        <div class="rmain">
+          <button type="button" class="ring" id="rest-cfg" aria-expanded="false" aria-controls="rest-settings" aria-label="休息設定"><span><svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg></span></button>
+          <div class="rtext"><span class="timer num" id="rest" aria-live="polite">--:--</span><span class="rsub" id="rest-sub"></span></div>
+          <button type="button" class="rbtn" id="rest-minus" aria-label="減 15 秒">−15</button>
+          <button type="button" class="rbtn" id="rest-plus" aria-label="加 15 秒">+15</button>
+          <button type="button" class="rbtn skip" id="rest-skip">略過</button>
+        </div>
+        <div class="restbar" aria-hidden="true"><i id="rest-fill"></i></div>
+        <div class="rsettings" id="rest-settings" hidden>
+          <div class="row" style="gap:6px"><span class="hint">預設休息</span><span class="chips" id="rest-presets"></span></div>
+          <label class="row hint" style="gap:6px">自訂<input id="rest-custom" class="mini" type="number" min="10" max="900" step="5" aria-label="自訂休息秒數">秒</label>
+          <div class="row" style="gap:8px">
+            <button type="button" class="chip" id="rest-alert" aria-pressed="false">休息結束時提醒</button>
+            <span class="hint" id="rest-alert-note"></span>
+          </div>
+          <span class="hint">完成一組按 ✓ 後自動開始倒數。每個動作也可以設定自己的休息時間。</span>
+        </div>
       </div>
     </div>
   </section>
@@ -283,18 +500,19 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
   <!-- HISTORY -->
   <section class="tab" id="tab-history" hidden>
     <div id="hist-head" style="display:flex;flex-direction:column;gap:14px">
-      <div class="row spread"><h2>訓練紀錄</h2><span class="hint">點任一筆可以修改或刪除</span></div>
+      <span class="hint" style="margin-top:-10px">點任一筆就能修改或刪除</span>
       <div class="hist" id="hist"></div>
     </div>
 
-    <div id="w-edit" hidden style="display:flex;flex-direction:column;gap:14px">
-      <div class="row spread"><h2 id="w-title">修改紀錄</h2><button class="btn ghost" id="w-cancel" type="button">取消</button></div>
+    <div id="w-edit" hidden style="display:flex;flex-direction:column;gap:12px">
+      <div class="sechead"><h2 id="w-title">修改紀錄</h2><button class="btn ghost" id="w-cancel" type="button">取消</button></div>
       <div class="panel">
         <label class="eyebrow" for="w-date">日期</label>
-        <input id="w-date" class="search" type="date">
+        <input id="w-date" class="field" type="date">
         <span class="hint">改重量或次數後按下方「儲存修改」才會生效。沒填次數的組會被丟掉。</span>
       </div>
       <div id="w-list" style="display:flex;flex-direction:column;gap:12px"></div>
+      <button class="btn dashed" id="w-add" type="button"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>加入動作</button>
       <div id="w-picker-slot"></div>
       <div class="row" style="flex-wrap:nowrap">
         <button class="btn" id="w-delete" type="button" style="flex:1">刪除這筆</button>
@@ -310,33 +528,45 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
   <!-- PROGRESS -->
   <section class="tab" id="tab-progress" hidden>
     <div class="panel">
-      <div class="row spread"><h2>每週訓練量</h2><span class="hint">重量 × 次數，公斤</span></div>
+      <div class="kpi">
+        <div><h2>每週訓練量</h2><div class="big"><span id="v-now">0</span><small>公斤 · 本週</small></div></div>
+        <span class="hint" style="text-align:right;padding-top:4px">重量 × 次數<br><span id="v-prev"></span></span>
+      </div>
       <svg class="chart" id="c-vol" viewBox="0 0 340 170" role="img" aria-label="近 8 週訓練量長條圖"></svg>
     </div>
     <div class="panel">
-      <div class="row spread"><h2>估算 1RM</h2><select id="ex-sel" aria-label="選擇動作"></select></div>
+      <div class="kpi" style="align-items:center"><h2>估算 1RM</h2>
+        <span class="selwrap"><select id="ex-sel" aria-label="選擇動作"></select><svg class="ico" width="16" height="16" aria-hidden="true"><use href="#i-down"/></svg></span></div>
+      <div class="row" style="gap:10px;align-items:baseline"><div class="big"><span id="rm-now">—</span><small>公斤</small></div><span class="delta" id="rm-delta" hidden></span></div>
       <svg class="chart" id="c-1rm" viewBox="0 0 340 170" role="img" aria-label="估算一次最大重量趨勢"></svg>
-      <span class="hint">依 Epley 公式：重量 × (1 + 次數 ÷ 30)，取每次訓練最佳組。</span>
+      <span class="hint">Epley 公式：重量 × (1 + 次數 ÷ 30)，取每次訓練最佳組。</span>
     </div>
-    <div class="panel">
-      <h2>個人紀錄</h2>
+    <div class="panel" style="padding-bottom:6px;gap:0">
+      <div class="kpi" style="padding-bottom:8px"><h2>個人紀錄</h2><span class="hint">最佳組 · 估算 1RM</span></div>
       <div class="prs" id="prs"></div>
     </div>
     <div class="panel bw">
-      <div class="row spread"><h2>體重</h2>
-        <form class="row" id="bw-form"><input id="bw-input" type="number" step="0.1" min="20" max="300" placeholder="72.5" aria-label="今天體重（公斤）"><button class="btn primary" type="submit">記錄</button></form>
-      </div>
+      <div class="kpi"><div><h2>體重</h2><div class="big"><span id="bw-now">—</span><small id="bw-delta">公斤</small></div></div></div>
       <svg class="chart" id="c-bw" viewBox="0 0 340 150" role="img" aria-label="體重趨勢"></svg>
-      <span class="eyebrow">修改過往紀錄</span>
-      <ul class="bwlist" id="bw-list"></ul>
+      <form class="bwform" id="bw-form">
+        <label><input id="bw-input" type="number" inputmode="decimal" step="0.1" min="20" max="300" placeholder="今天的體重" aria-label="今天體重（公斤）"><span class="hint">公斤</span></label>
+        <button class="btn primary" type="submit">記錄</button>
+      </form>
+      <button type="button" class="disclose" id="bw-toggle" aria-expanded="false" aria-controls="bw-wrap"><span id="bw-toggle-label">修改過往體重</span><svg class="ico" style="color:var(--muted)" aria-hidden="true"><use href="#i-chev"/></svg></button>
+      <div id="bw-wrap" hidden><ul class="bwlist" id="bw-list"></ul></div>
     </div>
     <div class="panel" id="backup" hidden>
-      <h2>資料備份</h2>
-      <p class="hint" style="margin:0">所有紀錄只存在這支手機裡。換手機或刪除 App 前，先匯出備份檔，之後再匯入即可還原。</p>
-      <span class="hint" id="backup-last"></span>
-      <div class="row">
-        <button class="btn primary" id="export" type="button">匯出備份</button>
-        <label class="btn" for="import-file" style="display:inline-block">匯入備份</label>
+      <div class="bkhead">
+        <span class="bkicon" aria-hidden="true"><svg class="ico" style="width:22px;height:22px"><use href="#i-save"/></svg></span>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <h2 id="backup-title">資料備份</h2>
+          <span class="hint">紀錄只存在這支手機。換手機或刪除 App 前，先匯出備份檔，之後再匯入即可還原。</span>
+          <span class="hint" id="backup-last" style="font-weight:700"></span>
+        </div>
+      </div>
+      <div class="row" style="flex-wrap:nowrap">
+        <button class="btn primary" id="export" type="button" style="flex:2">匯出備份</button>
+        <label class="btn" for="import-file" style="flex:1;background:transparent">匯入備份</label>
         <input id="import-file" type="file" accept="application/json,.json" hidden>
       </div>
       <div class="confirm" id="import-confirm" hidden>
@@ -347,10 +577,11 @@ nav.bar button:focus-visible{outline:2px solid var(--accent);outline-offset:-4px
   </section>
 </div>
 
+<div id="scrim" hidden></div>
 <nav class="bar" aria-label="主選單"><div class="in">
-  <button type="button" data-tab="today" aria-current="page"><svg viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>今天</button>
-  <button type="button" data-tab="history"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>紀錄</button>
-  <button type="button" data-tab="progress"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3 3 5-6"/></svg>進度</button>
+  <button type="button" data-tab="today" aria-current="page"><span><svg viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg></span>今天</button>
+  <button type="button" data-tab="history"><span><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span>紀錄</button>
+  <button type="button" data-tab="progress"><span><svg viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-4 3 3 5-6"/></svg></span>進度</button>
 </div></nav>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -397,6 +628,8 @@ const monday=d=>{const x=new Date(d);const k=(x.getDay()+6)%7;x.setDate(x.getDat
 const fmtK=n=>n>=10000?(n/1000).toFixed(1)+"k":Math.round(n).toLocaleString();
 const e1rm=(kg,r)=>r<=0||kg<=0?0:(r===1?kg:kg*(1+r/30));
 const vol=w=>w.exercises.reduce((a,e)=>a+e.sets.reduce((b,s)=>b+(+s.kg||0)*(+s.reps||0),0),0);
+const WD="日一二三四五六";
+const md=d=>`${d.getMonth()+1}/${d.getDate()}`;
 
 function seed(){
   const today=new Date();today.setHours(0,0,0,0);
@@ -468,23 +701,45 @@ try{S=normalize(S)}catch(e){S=normalize(seed())}   // unreadable stored state mu
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const $=id=>document.getElementById(id);
 const el=(t,a={},...c)=>{const n=document.createElement(t);for(const k in a){if(k==="class")n.className=a[k];else if(k.startsWith("on"))n.addEventListener(k.slice(2),a[k]);else n.setAttribute(k,a[k])}c.flat().forEach(x=>n.append(x));return n};
+const SVGNS="http://www.w3.org/2000/svg";
+const icon=(name,cls="ico")=>{const s=document.createElementNS(SVGNS,"svg");s.setAttribute("class",cls);s.setAttribute("aria-hidden","true");const u=document.createElementNS(SVGNS,"use");u.setAttribute("href","#i-"+name);s.append(u);return s};
+const plates=(names,max)=>el("span",{class:"plates","aria-hidden":"true"},...names.map(e=>el("i",{"data-g":G(e.name),style:`height:${Math.min(max,6+e.sets*(max/6))}px`})));
 
 let toastT;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,3200)}
 
 /* ---------- tabs ---------- */
+const TITLES={today:"今天",history:"紀錄",progress:"進度"};
 document.querySelectorAll("nav.bar button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.tab)));
 const activeTab=()=>["today","history","progress"].find(k=>!$("tab-"+k).hidden)||"today";
 function show(t){
+  closeSheet();
   document.querySelectorAll("nav.bar button").forEach(b=>{if(b.dataset.tab===t)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
   ["today","history","progress"].forEach(k=>$("tab-"+k).hidden=k!==t);
+  $("page-title").textContent=TITLES[t];
   if(t==="today")renderDraft(); if(t==="history")renderHistory(); if(t==="progress")renderProgress();
   try{localStorage.setItem(KEY+"-tab",t)}catch(e){}
   window.scrollTo(0,0);
 }
 
+/* ---------- exercise sheet ---------- */
+// one picker serves the workout, the routine editor and the record editor; it lives in
+// whichever slot owns it and slides up over the page when asked for
+function openSheet(){
+  $("picker-panel").classList.add("open");$("scrim").hidden=false;
+  document.body.style.overflow="hidden";renderPicker();
+}
+function closeSheet(){
+  const p=$("picker-panel");if(!p||!p.classList.contains("open"))return;
+  p.classList.remove("open");$("scrim").hidden=true;document.body.style.overflow="";
+}
+$("scrim").addEventListener("click",closeSheet);
+$("sheet-close").addEventListener("click",closeSheet);
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
+["d-add","r-add","w-add"].forEach(id=>$(id).addEventListener("click",openSheet));
+
 /* ---------- summary ---------- */
 function renderSummary(){
-  const wk=ymd(monday(new Date()));
+  const m0=monday(new Date()),wk=ymd(m0);
   const thisWeek=S.workouts.filter(w=>ymd(monday(parse(w.date)))===wk);
   $("s-week").textContent=thisWeek.length;
   $("s-vol").textContent=fmtK(thisWeek.reduce((a,w)=>a+vol(w),0));
@@ -493,29 +748,59 @@ function renderSummary(){
   while(weeks.has(ymd(d))){n++;d.setDate(d.getDate()-7)}
   $("s-streak").textContent=n;
   $("sample-badge").hidden=!S.sample;
-  const t=new Date();$("today-label").textContent=`${t.getMonth()+1} 月 ${t.getDate()} 日 星期${"日一二三四五六"[t.getDay()]}`;
+  const t=new Date();$("today-label").textContent=`${t.getMonth()+1} 月 ${t.getDate()} 日 星期${WD[t.getDay()]}`;
+  // the week strip: Monday first, trained days filled, today ringed
+  const done=new Set(thisWeek.map(w=>w.date)),today=ymd(t);
+  const sun=new Date(m0);sun.setDate(sun.getDate()+6);
+  $("wk-range").textContent=`${md(m0)} – ${md(sun)}`;
+  $("wk-days").replaceChildren(...Array.from({length:7},(_,i)=>{
+    const x=new Date(m0);x.setDate(x.getDate()+i);const k=ymd(x),on=done.has(k);
+    const c=(on?"on ":"")+(k===today?"today":"");
+    return el("span",{class:c.trim()},WD[(i+1)%7],
+      el("i",{"aria-label":`${x.getMonth()+1} 月 ${x.getDate()} 日${on?"，有練":""}`},on?icon("check"):String(x.getDate())));
+  }));
+  $("wk-days").querySelectorAll(".on svg").forEach(s=>{s.style.cssText="width:18px;height:18px;stroke-width:3"});
 }
 
 /* ---------- draft workout ---------- */
 function lastSetsFor(name){for(const w of S.workouts){const e=w.exercises.find(x=>x.name===name);if(e)return e.sets}return null}
 let fG="全部",fEq="全部",showAll=false;
-function chipRow(box,opts,cur,on){box.replaceChildren(...opts.map(o=>el("button",{type:"button",class:"chip","aria-pressed":String(o===cur),onclick:()=>on(o)},o)))}
+function chipRow(box,opts,cur,on,deco){box.replaceChildren(...opts.map(o=>el("button",{type:"button",class:"chip","aria-pressed":String(o===cur),onclick:()=>on(o)},deco?deco(o):"",o)))}
+// which list the picker is adding to right now, so it can mark what is already there
+function pickTarget(){
+  if(wEdit&&activeTab()==="history")return wEdit.exercises;
+  if(editing)return editing.exercises;
+  return S.draft?S.draft.exercises:[];
+}
 function renderPicker(){
   $("custom-manage").hidden=!S.custom.length;
   if(!S.custom.length)$("custom-box").hidden=true;
-  chipRow($("f-g"),["全部",...GROUPS],fG,o=>{fG=o;showAll=false;renderPicker()});
+  chipRow($("f-g"),["全部",...GROUPS],fG,o=>{fG=o;showAll=false;renderPicker()},o=>o==="全部"?"":el("span",{class:"dot","data-g":o}));
   chipRow($("f-eq"),["全部",...EQUIP],fEq,o=>{fEq=o;showAll=false;renderPicker()});
+  $("f-eq").firstElementChild.textContent="所有器材";
   const q=$("search").value.trim();
   const used=new Set(S.workouts.flatMap(w=>w.exercises.map(e=>e.name)));
-  let list=allEx().filter(e=>(fG==="全部"||e.g===fG)&&(fEq==="全部"||e.eq===fEq)&&(!q||(e.name+e.g+e.eq).includes(q)));
-  list.sort((a,b)=>(used.has(b.name)-used.has(a.name)));
+  const have=new Set(pickTarget().map(e=>e.name));
+  const list=allEx().filter(e=>(fG==="全部"||e.g===fG)&&(fEq==="全部"||e.eq===fEq)&&(!q||(e.name+e.g+e.eq).includes(q)));
   const p=$("picker");p.replaceChildren();
-  if(!list.length){p.append(el("div",{class:"hint",style:"grid-column:1/-1"},"找不到符合的動作。可以用「＋ 自訂動作」把它加進動作庫。"));return}
-  const LIM=12;const shown=showAll||q?list:list.slice(0,LIM);
-  shown.forEach(e=>p.append(el("button",{type:"button",onclick:()=>addEx(e.name)},
-    el("span",{class:"pn"},el("span",{class:"dot","data-g":e.g}),e.name),
-    el("span",{class:"pe"},`${e.g} · ${e.eq}${e.custom?" · 自訂":""}${used.has(e.name)?" · 練過":""}`))));
-  if(shown.length<list.length)p.append(el("button",{type:"button",class:"more",onclick:()=>{showAll=true;renderPicker()}},`顯示全部 ${list.length} 個動作`));
+  if(!list.length){p.append(el("div",{class:"hint",style:"padding:16px 0"},"找不到符合的動作。可以用下方的「自訂動作」把它加進動作庫。"));return}
+  const row=(e,recent)=>{
+    const prev=recent&&lastSetsFor(e.name);
+    const isIn=have.has(e.name);
+    return el("button",{type:"button",class:"prow"+(recent?" recent":""),onclick:()=>{addEx(e.name);renderPicker()}},
+      el("span",{class:"dot","data-g":e.g}),
+      el("span",{class:"tx"},el("span",{class:"pn"},e.name),
+        el("span",{class:"pe"},`${e.g} · ${e.eq}${e.custom?" · 自訂":""}${isIn?" · 已在清單裡":prev&&prev[0]?` · 上次 ${prev[0].kg} × ${prev[0].reps}`:""}`)),
+      isIn?el("span",{class:"have"},icon("check"),"已加入"):el("span",{class:"add"},icon("plus")));
+  };
+  const rec=list.filter(e=>used.has(e.name)),rest=list.filter(e=>!used.has(e.name));
+  if(rec.length){p.append(el("span",{class:"sec"},"最近練過"));rec.forEach(e=>p.append(row(e,true)))}
+  if(rest.length){
+    p.append(el("span",{class:"sec"},`動作庫 · ${rest.length} 個`));
+    const LIM=12;const shown=showAll||q?rest:rest.slice(0,LIM);
+    shown.forEach(e=>p.append(row(e,false)));
+    if(shown.length<rest.length)p.append(el("button",{type:"button",class:"more",onclick:()=>{showAll=true;renderPicker()}},`顯示全部 ${rest.length} 個動作`));
+  }
 }
 $("search").addEventListener("input",renderPicker);
 $("c-g").replaceChildren(...GROUPS.map(g=>el("option",{value:g},g)));
@@ -586,6 +871,7 @@ function closeCustomForm(){cEdit=null;$("custom-form").hidden=true;$("c-name").v
 $("custom-open").addEventListener("click",()=>{
   if(!$("custom-form").hidden&&!cEdit){closeCustomForm();return}
   customForm(null);
+  $("custom-form").scrollIntoView&&$("custom-form").scrollIntoView({block:"nearest"});
 });
 $("c-cancel").addEventListener("click",closeCustomForm);
 $("c-name").addEventListener("input",updateCustomHint);
@@ -601,8 +887,8 @@ function renderCustomList(){
     const u=usageOf(c.name);
     ul.append(el("li",{},
       el("span",{class:"dot","data-g":c.g}),
-      el("span",{class:"nm"},c.name),
-      el("span",{class:"hint"},`${c.g} · ${c.eq}${u.w?` · ${u.w} 筆`:""}`),
+      el("span",{class:"nm"},c.name,el("span",{class:"hint",style:"display:block"},`${c.g} · ${c.eq}${u.w?` · ${u.w} 筆`:""}`)),
+      el("span",{}),
       el("span",{class:"ord"},
         el("button",{type:"button",class:"iconbtn","aria-label":`編輯${c.name}`,onclick:()=>customForm(c.name)},"編輯"),
         el("button",{type:"button",class:"iconbtn","aria-label":`移除${c.name}`,onclick:()=>{
@@ -641,7 +927,7 @@ $("custom-form").addEventListener("submit",e=>{
   const u=usageOf(name);   // re-adding a removed name reattaches its old records
   S.custom.push({name,g,eq,custom:true});save();
   closeCustomForm();refreshExerciseViews();
-  if(S.draft||editing||wEdit)addEx(name);
+  if(S.draft||editing||wEdit){addEx(name);renderPicker()}
   if(u.w||u.r)toast(`已加入「${name}」，接回 ${u.w} 筆紀錄、${u.r} 個範本`);
   else if(!(S.draft||editing||wEdit))toast(`已加入動作庫：「${name}」`);
 });
@@ -661,7 +947,7 @@ function addEx(name){
   if(!S.draft){toast("先開始一次訓練，才能加入動作");return}
   const prev=lastSetsFor(name);
   const sets=prev?prev.map(s=>({kg:s.kg,reps:s.reps,done:false})):[{kg:"",reps:"",done:false}];
-  S.draft.exercises.push({name,sets});save();renderDraft();
+  S.draft.exercises.push({name,sets});save();exOpen[name]=true;renderDraft();
   toast(prev?`已加入${name}，帶入上次的 ${prev.length} 組`:`已加入${name}`);
 }
 /* ---------- rest timer ---------- */
@@ -686,12 +972,25 @@ function restoreRest(){
 }
 function startRest(sec){restTotal=sec;restEnd=Date.now()+sec*1000;restAlerted=false;saveRest();clearInterval(restIv);tick();restIv=setInterval(tick,250)}
 function stopRest(){restEnd=0;restAlerted=false;clearInterval(restIv);saveRest()}
+// the first unticked set of the workout, which the focus card and the dock both point at
+function activeSet(){
+  if(!S.draft)return null;
+  for(const ex of S.draft.exercises){const i=ex.sets.findIndex(s=>!s.done);if(i>=0)return{ex,st:ex.sets[i],n:i+1}}
+  return null;
+}
 function tick(){
   const box=document.querySelector(".restbox");
   const s=restEnd?Math.max(0,Math.ceil((restEnd-Date.now())/1000)):0;
   $("rest").textContent=restEnd?`${pad(Math.floor(s/60))}:${pad(s%60)}`:fmtTime(S.settings.rest);
-  $("rest-fill").style.width=restEnd&&restTotal?`${100*s/restTotal}%`:"0";
+  const pct=restEnd&&restTotal?100*s/restTotal:0;
+  $("rest-fill").style.width=restEnd&&restTotal?`${pct}%`:"0";
+  $("rest-cfg").style.setProperty("--p",restEnd?pct.toFixed(1):"0");
   box.classList.toggle("ready",!!restEnd&&s===0);
+  box.classList.toggle("running",!!restEnd&&s>0);
+  const a=activeSet();
+  const nx=a?`下一組：${a.ex.name} 第 ${a.n} 組`:"全部打勾了，可以完成訓練";
+  const sub=!restEnd?"組間休息 · 完成一組後自動倒數":s===0?`休息結束！${nx}`:nx;
+  if($("rest-sub").textContent!==sub)$("rest-sub").textContent=sub;
   // reopening the app re-ticks an already-finished rest, so everything that makes
   // noise has to sit behind the latch or the phone buzzes on every return
   if(restEnd&&s===0&&!restAlerted){
@@ -702,6 +1001,10 @@ function tick(){
     }
   }
 }
+$("rest-cfg").addEventListener("click",()=>{
+  const p=$("rest-settings"),open=p.hidden;p.hidden=!open;
+  $("rest-cfg").setAttribute("aria-expanded",String(open));
+});
 
 /* ---------- end-of-rest alert ---------- */
 // background timers get throttled, so the deadline can be long past by the time this
@@ -783,7 +1086,7 @@ const fmtTime=s=>`${pad(Math.floor(s/60))}:${pad(s%60)}`;
 function renderRestSettings(){
   chipRow($("rest-presets"),PRESETS.map(fmtSec),PRESETS.includes(S.settings.rest)?fmtSec(S.settings.rest):null,o=>{S.settings.rest=PRESETS[PRESETS.map(fmtSec).indexOf(o)];save();$("rest-custom").value="";renderRestSettings();if(!restEnd)tick()});
   if(!PRESETS.includes(S.settings.rest))$("rest-custom").value=S.settings.rest;
-  document.querySelectorAll('select[id^="rs-"] option[value=""]').forEach(o=>o.textContent=`跟預設（${fmtSec(S.settings.rest)}）`);
+  document.querySelectorAll('select[id^="rs-"] option[value=""]').forEach(o=>o.textContent=`預設（${fmtSec(S.settings.rest)}）`);
 }
 $("rest-custom").addEventListener("change",()=>{const v=Math.round(+$("rest-custom").value);
   if(!(v>=10&&v<=900)){toast("休息時間請設在 10 到 900 秒之間");return}
@@ -792,18 +1095,36 @@ $("rest-plus").addEventListener("click",()=>{if(restEnd){const s=Math.max(0,(res
 $("rest-minus").addEventListener("click",()=>{if(restEnd){restEnd=Math.max(Date.now(),restEnd-15000);saveRest();tick()}else{S.settings.rest=Math.max(10,S.settings.rest-15);save();renderRestSettings();tick()}});
 $("rest-skip").addEventListener("click",()=>{stopRest();tick()});
 const restFor=name=>S.settings.exRest[name]||S.settings.rest;
+
+// cards the user opened or closed by hand; the rest follow where the workout is
+let exOpen={};
+let focusers=[];
+// after any tick or edit: move the focus card to the next set and update the counters,
+// touching only text and classes so whichever field has focus keeps it
+function refreshFocus(){
+  const a=activeSet();
+  focusers.forEach(f=>f(a));
+  if(!S.draft)return;
+  let done=0,total=0;S.draft.exercises.forEach(e=>e.sets.forEach(s=>{total++;if(s.done)done++}));
+  $("d-prog").textContent=total?`${done} / ${total} 組完成`:"還沒有動作";
+  $("d-bar").style.width=total?`${100*done/total}%`:"0";
+}
+const kgStr=v=>v===""||v==null?"—":String(+v);
 function renderDraft(){
   const has=!!S.draft;
   $("no-draft").hidden=has||!!editing;$("draft").hidden=!has||!!editing;$("r-edit").hidden=!editing;
   if(editing)return renderEdit();
-  if(!has)return renderRoutines();
+  if(!has){focusers=[];return renderRoutines();}
   $("d-picker-slot").append($("picker-panel"));
   $("draft-title").textContent=S.draft.name||"進行中的訓練";
-  const list=$("draft-list");list.replaceChildren();
-  if(!S.draft.exercises.length)list.append(el("div",{class:"panel empty"},"從下方選一個動作開始。上次做過的動作會自動帶入重量與次數。"));
+  const list=$("draft-list");list.replaceChildren();focusers=[];
+  if(!S.draft.exercises.length)list.append(el("div",{class:"panel empty"},"按下方「加入動作」開始。上次做過的動作會自動帶入重量與次數。"));
+  const act=activeSet();
+  const actIdx=act?S.draft.exercises.indexOf(act.ex):-1;
   S.draft.exercises.forEach((ex,ei)=>{
     const prev=lastSetsFor(ex.name);
     const tb=el("tbody");
+    const rows=new Map();
     // One row at a time, so adding or ticking a set only touches that row. Rebuilding the
     // whole list threw away whichever input had focus, and on a phone losing focus closes
     // the keyboard — the viewport grows back and the page jumps under your thumb.
@@ -813,54 +1134,104 @@ function renderDraft(){
       const n=ex.sets.indexOf(st)+1;
       const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${n} 組重量`,value:st.kg});
       const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0","aria-label":`第 ${n} 組次數`,value:st.reps});
-      kg.addEventListener("input",()=>{st.kg=kg.value===""?"":+kg.value;save()});
-      rp.addEventListener("input",()=>{st.reps=rp.value===""?"":+rp.value;save()});
-      const ck=el("button",{type:"button",class:"check","aria-pressed":String(!!st.done),"aria-label":`完成第 ${n} 組`},"✓");
+      kg.addEventListener("input",()=>{st.kg=kg.value===""?"":+kg.value;save();syncFocus()});
+      rp.addEventListener("input",()=>{st.reps=rp.value===""?"":+rp.value;save();syncFocus()});
+      const ck=el("button",{type:"button",class:"check","aria-pressed":String(!!st.done),"aria-label":`完成第 ${n} 組`},icon("check",""));
       const tr=el("tr",{class:st.done?"done":""},el("td",{class:"num hint"},String(n)),el("td",{},kg),el("td",{},rp),el("td",{},ck));
       ck.addEventListener("click",()=>{
         st.done=!st.done;save();
         tr.classList.toggle("done",st.done);ck.setAttribute("aria-pressed",String(st.done));
         if(st.done){primeAudio();startRest(restFor(ex.name))}
+        refreshFocus();
       });
+      rows.set(st,{tr,kg,rp,ck});
       return tr;
     };
     ex.sets.forEach(st=>tb.append(row(st)));
-    const addBtn=el("button",{type:"button",class:"btn ghost"},"＋ 加一組");
+    const addBtn=el("button",{type:"button",class:"btn ghost"},icon("plus"),"加一組");
     const delBtn=el("button",{type:"button",class:"btn ghost",style:"color:var(--muted)"},"刪最後一組");
     const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
     const rsel=el("select",{"aria-label":`${ex.name}的休息時間`,id:`rs-${ei}`},
-      el("option",{value:""},`跟預設（${fmtSec(S.settings.rest)}）`),...[30,45,60,75,90,120,150,180,240,300].map(v=>el("option",{value:String(v)},fmtSec(v))));
+      el("option",{value:""},`預設（${fmtSec(S.settings.rest)}）`),...[30,45,60,75,90,120,150,180,240,300].map(v=>el("option",{value:String(v)},fmtSec(v))));
     rsel.value=S.settings.exRest[ex.name]?String(S.settings.exRest[ex.name]):"";
     if(S.settings.exRest[ex.name]&&!rsel.value){rsel.append(el("option",{value:String(S.settings.exRest[ex.name])},fmtSec(S.settings.exRest[ex.name])));rsel.value=String(S.settings.exRest[ex.name])}
     rsel.addEventListener("change",()=>{if(rsel.value)S.settings.exRest[ex.name]=+rsel.value;else delete S.settings.exRest[ex.name];save()});
-    const card=el("div",{class:"panel ex","data-g":meta.g},
-      el("div",{class:"row spread"},el("div",{class:"row"},el("h3",{},ex.name),el("span",{class:"tag"},`${meta.g}${meta.eq?" · "+meta.eq:""}`)),
+
+    // the next set, in thumb-sized steppers; its values are the row's values
+    let fSt=null;
+    const fTitle=el("b",{}),fPrev=el("span",{class:"hint"});
+    const fKg=el("output",{class:"num"}),fRp=el("output",{class:"num"});
+    const step=(field,d,min)=>()=>{if(!fSt)return;const r=rows.get(fSt);
+      const v=Math.max(min,Math.round(((+fSt[field]||0)+d)*100)/100);fSt[field]=v;
+      (field==="kg"?r.kg:r.rp).value=v;save();syncFocus()};
+    const stepper=(lbl,out,field,d,min,unit)=>el("div",{class:"stepper"},el("span",{class:"lbl"},lbl),
+      el("div",{class:"sbox"},
+        el("button",{type:"button","aria-label":`${unit}減 ${d}`,onclick:step(field,-d,min)},icon("minus")),out,
+        el("button",{type:"button","aria-label":`${unit}加 ${d}`,onclick:step(field,d,min)},icon("plus"))));
+    const focus=el("div",{class:"setfocus",hidden:""},
+      el("div",{class:"sf-top"},fTitle,fPrev),
+      el("div",{class:"sf-grid"},stepper("公斤",fKg,"kg",2.5,0,"重量"),stepper("次數",fRp,"reps",1,1,"次數")),
+      el("button",{type:"button",class:"btn primary wide",onclick:()=>{
+        if(!fSt)return;const r=rows.get(fSt);r.ck.click();
+        const nx=document.querySelector(".setfocus:not([hidden])");
+        if(nx&&nx!==focus){const c=nx.closest(".ex");c.classList.remove("collapsed");c.querySelector(".extitle").setAttribute("aria-expanded","true");nx.scrollIntoView({block:"center",behavior:"smooth"})}
+      }},icon("check"),"完成這組，開始休息"));
+    const prog=el("span",{class:"exprog"});
+    const syncFocus=()=>{
+      const d=ex.sets.filter(s=>s.done).length;
+      prog.textContent=`${d}/${ex.sets.length}`;prog.classList.toggle("full",d===ex.sets.length&&d>0);
+      rows.forEach((r,st)=>r.tr.classList.toggle("next",st===fSt));
+      if(!fSt){focus.hidden=true;return}
+      focus.hidden=false;
+      fTitle.textContent=`第 ${ex.sets.indexOf(fSt)+1} 組`;
+      const p=prev&&(prev[ex.sets.indexOf(fSt)]||prev[prev.length-1]);
+      fPrev.textContent=p?`上次 ${p.kg} × ${p.reps}`:"第一次做這個動作";
+      fKg.textContent=kgStr(fSt.kg);fRp.textContent=kgStr(fSt.reps);
+    };
+    focusers.push(a=>{fSt=a&&a.ex===ex?a.st:null;syncFocus()});
+
+    const allDone=ex.sets.length&&ex.sets.every(s=>s.done);
+    const open=exOpen[ex.name]!==undefined?exOpen[ex.name]:actIdx<0?!allDone:(ei===actIdx||ei===actIdx+1||(!allDone&&ei<actIdx));
+    const title=el("button",{type:"button",class:"extitle","aria-expanded":String(open)},
+      el("h3",{},ex.name),el("span",{class:"tag"},`${meta.g}${meta.eq?" · "+meta.eq:""}`));
+    const card=el("div",{class:"panel ex"+(open?"":" collapsed"),"data-g":meta.g},
+      el("div",{class:"exhead"},el("span",{class:"plate","data-g":meta.g,"aria-hidden":"true"}),title,prog,
         el("button",{type:"button",class:"iconbtn",onclick:()=>{S.draft.exercises.splice(ei,1);save();renderDraft()}},"移除")),
-      prev?el("span",{class:"hint"},"上次："+prev.map(s=>`${s.kg}×${s.reps}`).join("、")):"",
-      el("label",{class:"exrest"},"組間休息",rsel),
-      el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:28px"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:46px"},""))),tb),
-      el("div",{class:"row"},addBtn,delBtn)
+      el("div",{class:"exbody"},
+        el("div",{class:"exinfo"},
+          prev?el("span",{class:"pill"},prev.every(s=>s.kg===prev[0].kg&&s.reps===prev[0].reps)?`上次 ${prev.length} 組 · ${prev[0].kg} × ${prev[0].reps}`:"上次 "+prev.map(s=>`${s.kg}×${s.reps}`).join("、")):"",
+          el("label",{class:"exrest"},icon("clock"),"休息",rsel)),
+        el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:30px;text-align:center"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:50px"},""))),tb),
+        focus,
+        el("div",{class:"exfoot"},addBtn,delBtn))
     );
+    card.querySelectorAll(".exrest svg").forEach(s=>{s.style.cssText="width:14px;height:14px"});
+    title.addEventListener("click",()=>{
+      const c=card.classList.toggle("collapsed");exOpen[ex.name]=!c;title.setAttribute("aria-expanded",String(!c));
+    });
     delBtn.hidden=ex.sets.length<2;   // a property, not an attribute: hidden="false" still hides
     addBtn.addEventListener("click",()=>{
       const last=ex.sets[ex.sets.length-1]||{kg:"",reps:""};
       const st={kg:last.kg,reps:last.reps,done:false};
       ex.sets.push(st);save();
       tb.append(row(st));delBtn.hidden=ex.sets.length<2;
+      refreshFocus();
     });
     delBtn.addEventListener("click",()=>{
       if(ex.sets.length<2)return;
-      ex.sets.pop();save();
+      const st=ex.sets.pop();save();rows.delete(st);
       if(tb.lastElementChild)tb.lastElementChild.remove();
       delBtn.hidden=ex.sets.length<2;
+      refreshFocus();
     });
     list.append(card);
   });
+  refreshFocus();
 }
-$("start").addEventListener("click",()=>{S.draft={date:ymd(new Date()),exercises:[]};save();renderDraft()});
+$("start").addEventListener("click",()=>{S.draft={date:ymd(new Date()),exercises:[]};exOpen={};save();renderDraft()});
 $("discard").addEventListener("click",()=>$("discard-confirm").hidden=false);
 $("discard-no").addEventListener("click",()=>$("discard-confirm").hidden=true);
-$("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;stopRest();tick();renderDraft()});
+$("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;closeSheet();stopRest();tick();renderDraft()});
 $("finish").addEventListener("click",()=>{
   // only ticked rows get saved, so only ticked rows are judged
   const bad=badSet(S.draft.exercises,st=>st.done&&!blank(st.reps));
@@ -870,36 +1241,61 @@ $("finish").addEventListener("click",()=>{
   const before=bests();
   const w={id:"w"+Date.now(),date:S.draft.date,routine:S.draft.routine||null,exercises:ex};
   S.workouts.unshift(w);S.workouts.sort((a,b)=>b.date.localeCompare(a.date));
-  S.draft=null;save();stopRest();tick();
+  S.draft=null;save();closeSheet();stopRest();tick();
   const after=bests();const prs=Object.keys(after).filter(k=>after[k].e>(before[k]?.e||0)+0.01);
-  renderDraft();renderSummary();
+  renderDraft();renderSummary();window.scrollTo(0,0);
   toast(`已儲存：總量 ${fmtK(vol(w))} 公斤`+(prs.length?`，新紀錄：${prs.join("、")}`:""));
 });
 
 /* ---------- routines ---------- */
 let editing=null; // {id|null, name, exercises:[{name,sets}]}
+const rNewBtn=$("r-new");   // re-homed into the list header on every render
 const daysAgo=ds=>{const n=Math.round((new Date().setHours(0,0,0,0)-parse(ds))/864e5);return n===0?"今天":n===1?"昨天":`${n} 天前`};
+// rotate through the routines in the order they are listed: after A comes B
+function suggestRoutine(){
+  if(!S.routines.length)return null;
+  const last=S.workouts.find(w=>S.routines.some(r=>r.id===w.routine));
+  if(!last)return{r:S.routines[0],why:"從這個開始"};
+  const i=S.routines.findIndex(r=>r.id===last.routine);
+  if(S.routines.length===1)return{r:S.routines[0],why:`上次 ${daysAgo(last.date)}`};
+  return{r:S.routines[(i+1)%S.routines.length],why:`上次練「${S.routines[i].name}」，輪到這個`};
+}
 function renderRoutines(){
   const box=$("routines");box.replaceChildren();
-  if(!S.routines.length){box.append(el("div",{class:"panel empty"},"把常練的動作存成範本，例如推日、拉日、腿日，之後一鍵開始。按「＋ 新增範本」建立第一個。"))}
-  S.routines.forEach(r=>{
-    const last=S.workouts.find(w=>w.routine===r.id);
-    const totalSets=r.exercises.reduce((a,e)=>a+e.sets,0);
-    box.append(el("div",{class:"rcard"},
-      el("div",{class:"row spread"},el("h3",{},r.name),el("span",{class:"hint"},last?`上次 ${daysAgo(last.date)}`:"還沒練過")),
-      el("div",{class:"plates","aria-hidden":"true"},...r.exercises.map(e=>el("i",{"data-g":G(e.name),style:`height:${Math.min(22,8+e.sets*3)}px`}))),
-      el("ul",{},...r.exercises.map(e=>el("li",{},el("span",{},e.name),el("span",{class:"num"},`${e.sets} 組`)))),
-      el("span",{class:"hint"},`${r.exercises.length} 個動作 · ${totalSets} 組`),
-      el("div",{class:"row",style:"flex-wrap:nowrap"},
-        el("button",{type:"button",class:"btn",style:"flex:1",onclick:()=>openEdit(r)},"編輯"),
-        el("button",{type:"button",class:"btn primary",style:"flex:2",onclick:()=>startRoutine(r)},"開始"))));
-  });
+  const head=el("div",{class:"sechead"},el("h2",{},S.routines.length>1?"其他範本":"範本"),rNewBtn);
+  if(!S.routines.length){
+    box.append(head,el("div",{class:"panel empty"},"把常練的動作存成範本，例如推日、拉日、腿日，之後一鍵開始。按「新增範本」建立第一個。"));
+    return;
+  }
+  const sug=suggestRoutine();
+  const meta=r=>{const last=S.workouts.find(w=>w.routine===r.id);
+    return `${r.exercises.length} 個動作 · ${r.exercises.reduce((a,e)=>a+e.sets,0)} 組 · ${last?daysAgo(last.date):"還沒練過"}`};
+  const r=sug.r;
+  box.append(el("div",{style:"display:flex;flex-direction:column;gap:2px"},el("h2",{},"接下來練這個"),el("span",{class:"hint"},sug.why)));
+  box.append(el("div",{class:"rcard hero"},
+    el("div",{class:"row spread",style:"flex-wrap:nowrap;align-items:flex-start"},
+      el("div",{style:"display:flex;flex-direction:column;gap:4px;min-width:0"},el("h3",{},r.name),el("span",{class:"hint"},meta(r))),
+      plates(r.exercises,34)),
+    el("ul",{},...r.exercises.map(e=>{const p=lastSetsFor(e.name);
+      return el("li",{},el("span",{class:"dot","data-g":G(e.name)}),el("span",{class:"nm"},e.name),
+        el("span",{class:"num"},p&&p[0]?`${e.sets} × ${p[0].reps} · ${p[0].kg}`:`${e.sets} 組`))})),
+    el("div",{class:"acts"},
+      el("button",{type:"button",class:"iconbtn","aria-label":`編輯「${r.name}」範本`,onclick:()=>openEdit(r)},icon("edit")),
+      el("button",{type:"button",class:"btn primary",onclick:()=>startRoutine(r)},"開始訓練",el("span",{class:"go"},icon("arrow"))))));
+  const others=S.routines.filter(x=>x!==r);
+  box.append(head);
+  if(others.length)box.append(el("div",{class:"rgroup"},...others.map(x=>el("div",{class:"rcard rrow"},
+    plates(x.exercises,26),
+    el("span",{class:"tx"},el("b",{},x.name),el("span",{class:"hint"},meta(x))),
+    el("button",{type:"button",class:"iconbtn","aria-label":`編輯「${x.name}」範本`,onclick:()=>openEdit(x)},icon("edit")),
+    el("button",{type:"button",class:"btn quiet",onclick:()=>startRoutine(x)},"開始")))));
 }
 function startRoutine(r){
   S.draft={date:ymd(new Date()),routine:r.id,name:r.name,exercises:r.exercises.map(e=>{
     const prev=lastSetsFor(e.name);const sets=[];
     for(let k=0;k<e.sets;k++){const p=prev?(prev[k]||prev[prev.length-1]):null;sets.push({kg:p?p.kg:"",reps:p?p.reps:"",done:false})}
     return{name:e.name,sets}})};
+  exOpen={};
   save();renderDraft();window.scrollTo(0,0);toast(`開始「${r.name}」，已帶入上次的重量`);
 }
 function openEdit(r){
@@ -912,7 +1308,7 @@ function renderEdit(){
   if(document.activeElement!==$("r-name"))$("r-name").value=editing.name;
   $("r-picker-slot").append($("picker-panel"));
   const ol=$("r-list");ol.replaceChildren();
-  if(!editing.exercises.length)ol.append(el("li",{class:"hint",style:"display:block"},"從下方動作庫點選要加入的動作。"));
+  if(!editing.exercises.length)ol.append(el("li",{class:"hint",style:"display:block"},"按下方「加入動作」從動作庫挑選。"));
   editing.exercises.forEach((e,i)=>{
     const n=el("input",{type:"number",class:"mini",min:"1",max:"10",value:e.sets,id:`re-${i}`,"aria-label":`${e.name}組數`});
     n.addEventListener("change",()=>{e.sets=Math.max(1,Math.min(10,Math.round(+n.value)||1));n.value=e.sets});
@@ -927,7 +1323,7 @@ function renderEdit(){
 }
 $("r-name").addEventListener("input",()=>editing&&(editing.name=$("r-name").value));
 $("r-new").addEventListener("click",()=>openEdit(null));
-$("r-cancel").addEventListener("click",()=>{editing=null;renderDraft()});
+$("r-cancel").addEventListener("click",()=>{editing=null;closeSheet();renderDraft()});
 $("r-save").addEventListener("click",()=>{
   const name=$("r-name").value.trim();
   if(!name){toast("請幫範本取個名字，例如：推日");$("r-name").focus();return}
@@ -935,36 +1331,64 @@ $("r-save").addEventListener("click",()=>{
   const r={id:editing.id||"r"+Date.now(),name,exercises:editing.exercises};
   const i=S.routines.findIndex(x=>x.id===r.id);if(i>=0)S.routines[i]=r;else S.routines.push(r);
   if(S.draft&&!S.draft.routine&&editing.fromDraft){S.draft.routine=r.id;S.draft.name=name}
-  save();editing=null;renderDraft();toast(`已儲存範本「${name}」`)});
+  save();editing=null;closeSheet();renderDraft();toast(`已儲存範本「${name}」`)});
 $("r-delete").addEventListener("click",()=>$("r-del-confirm").hidden=false);
 $("r-del-no").addEventListener("click",()=>$("r-del-confirm").hidden=true);
-$("r-del-yes").addEventListener("click",()=>{S.routines=S.routines.filter(r=>r.id!==editing.id);save();const n=editing.name;editing=null;renderDraft();toast(`已刪除範本「${n}」`)});
+$("r-del-yes").addEventListener("click",()=>{S.routines=S.routines.filter(r=>r.id!==editing.id);save();const n=editing.name;editing=null;closeSheet();renderDraft();toast(`已刪除範本「${n}」`)});
 $("save-routine").addEventListener("click",()=>{
   if(!S.draft.exercises.length){toast("先加入動作，再存成範本");return}
   const ex=S.draft.exercises.map(e=>({name:e.name,sets:e.sets.length}));
   const existing=S.draft.routine&&S.routines.find(r=>r.id===S.draft.routine);
   editing=existing?{id:existing.id,name:existing.name,exercises:ex,fromDraft:true}:{id:null,name:"",exercises:ex,fromDraft:true};
-  renderDraft();window.scrollTo(0,0);
+  closeSheet();renderDraft();window.scrollTo(0,0);
 });
 
 /* ---------- history ---------- */
+// a workout earns the tag when it beat an earlier best for some exercise; the first
+// time an exercise appears is a baseline, not a record
+function prWorkouts(){
+  const best={},ids=new Set();
+  [...S.workouts].reverse().forEach(w=>w.exercises.forEach(e=>{
+    const v=Math.max(0,...e.sets.map(s=>e1rm(+s.kg||0,+s.reps||0)));
+    if(best[e.name]!==undefined&&v>best[e.name]+0.01)ids.add(w.id);
+    if(best[e.name]===undefined||v>best[e.name])best[e.name]=v;
+  }));
+  return ids;
+}
 function renderHistory(){
   $("hist-head").hidden=!!wEdit;
   $("w-edit").hidden=!wEdit;
   if(wEdit)return renderWorkoutEdit();
   const h=$("hist");h.replaceChildren();
   if(!S.workouts.length){h.append(el("div",{class:"panel empty"},"完成第一次訓練後，紀錄會出現在這裡。"));return}
-  S.workouts.forEach(w=>{
-    const d=parse(w.date);
-    const summary=w.exercises.map(e=>`${e.name} ${e.sets.length}組`).join(" · ");
-    h.append(el("button",{type:"button",class:"panel hitem",onclick:()=>openWorkout(w),
-      "aria-label":`修改 ${d.getMonth()+1} 月 ${d.getDate()} 日的訓練：${summary}，總量 ${fmtK(vol(w))} 公斤`},
-      el("span",{class:"hdate"},el("b",{},String(d.getDate())),el("span",{},`${d.getMonth()+1}月 週${"日一二三四五六"[d.getDay()]}`)),
-      el("span",{class:"hmeta"},
-        el("span",{class:"dots"},...w.exercises.map(e=>el("span",{class:"dot","data-g":G(e.name),title:e.name}))),
-        el("span",{class:"hlist"},summary)),
-      el("span",{class:"hvol"},el("span",{class:"num"},fmtK(vol(w))),el("span",{class:"hint"},"公斤")),
-      el("span",{class:"hchev","aria-hidden":"true"},"›")));
+  const prs=prWorkouts();
+  const thisMon=monday(new Date()).getTime();
+  const groups=[];
+  S.workouts.forEach(w=>{const m=monday(parse(w.date));const k=ymd(m);
+    if(!groups.length||groups[groups.length-1].k!==k)groups.push({k,m,items:[]});
+    groups[groups.length-1].items.push(w)});
+  groups.forEach(g=>{
+    const sun=new Date(g.m);sun.setDate(sun.getDate()+6);
+    const weeksAgo=Math.round((thisMon-g.m.getTime())/(7*864e5));
+    const label=weeksAgo===0?"本週":weeksAgo===1?"上週":`${weeksAgo} 週前`;
+    h.append(el("section",{class:"hgroup","aria-label":label},
+      el("div",{class:"hghead"},el("span",{},label+" ",el("span",{class:"hint"},`${md(g.m)} – ${md(sun)}`)),
+        el("span",{class:"hint"},`${g.items.length} 次 · ${fmtK(g.items.reduce((a,w)=>a+vol(w),0))} 公斤`)),
+      el("div",{class:"hcard"},...g.items.map(w=>{
+        const d=parse(w.date);
+        const summary=w.exercises.map(e=>`${e.name} ${e.sets.length}組`).join(" · ");
+        const r=S.routines.find(x=>x.id===w.routine);
+        const nsets=w.exercises.reduce((a,e)=>a+e.sets.length,0);
+        return el("button",{type:"button",class:"hitem",onclick:()=>openWorkout(w),
+          "aria-label":`修改 ${d.getMonth()+1} 月 ${d.getDate()} 日的訓練：${summary}，總量 ${fmtK(vol(w))} 公斤`},
+          el("span",{class:"hdate"},el("b",{},String(d.getDate())),el("span",{},`週${WD[d.getDay()]}`)),
+          el("span",{class:"hmeta"},
+            el("span",{class:"hname"},el("span",{},r?r.name:w.exercises.map(e=>e.name).join("、")),prs.has(w.id)?el("span",{class:"prtag"},"新紀錄"):""),
+            el("span",{class:"hsub"},el("span",{class:"dots"},...w.exercises.map(e=>el("span",{class:"dot","data-g":G(e.name),title:e.name}))),
+              `${w.exercises.length} 個動作 · ${nsets} 組`)),
+          el("span",{class:"hvol"},el("span",{class:"num"},fmtK(vol(w))),el("span",{class:"hint"},"公斤")),
+          icon("chev","ico hchev"));
+      }))));
   });
 }
 
@@ -989,14 +1413,14 @@ function openWorkout(w){
   $("w-date").max=ymd(new Date());
   renderHistory();window.scrollTo(0,0);
 }
-function closeWorkout(){wEdit=null;renderHistory();renderSummary();window.scrollTo(0,0)}
+function closeWorkout(){wEdit=null;closeSheet();renderHistory();renderSummary();window.scrollTo(0,0)}
 function renderWorkoutEdit(){
   const r=S.routines.find(x=>x.id===wEdit.routine);
   $("w-title").textContent=r?`修改「${r.name}」`:"修改紀錄";
   if(document.activeElement!==$("w-date"))$("w-date").value=wEdit.date;
   $("w-picker-slot").append($("picker-panel"));
   const list=$("w-list");list.replaceChildren();
-  if(!wEdit.exercises.length)list.append(el("div",{class:"panel empty"},"這筆紀錄裡沒有動作了。從下方加入動作，或按「刪除這筆」整筆移除。"));
+  if(!wEdit.exercises.length)list.append(el("div",{class:"panel empty"},"這筆紀錄裡沒有動作了。按「加入動作」補上，或按「刪除這筆」整筆移除。"));
   wEdit.exercises.forEach((ex,ei)=>{
     const tb=el("tbody");
     // same reason as the draft: a rebuild would drop the field being typed into
@@ -1022,13 +1446,14 @@ function renderWorkoutEdit(){
       return tr;
     };
     ex.sets.forEach(st=>tb.append(row(st)));
-    const wAdd=el("button",{type:"button",class:"btn ghost"},"＋ 加一組");
+    const wAdd=el("button",{type:"button",class:"btn ghost"},icon("plus"),"加一組");
     const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
     list.append(el("div",{class:"panel ex","data-g":meta.g},
-      el("div",{class:"row spread"},el("div",{class:"row"},el("h3",{},ex.name),el("span",{class:"tag"},`${meta.g}${meta.eq?" · "+meta.eq:""}`)),
+      el("div",{class:"exhead"},el("span",{class:"plate","data-g":meta.g,"aria-hidden":"true"}),
+        el("div",{class:"extitle"},el("h3",{},ex.name),el("span",{class:"tag"},`${meta.g}${meta.eq?" · "+meta.eq:""}`)),
         el("button",{type:"button",class:"iconbtn",onclick:()=>{wEdit.exercises.splice(ei,1);renderWorkoutEdit()}},"移除")),
-      el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:28px"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:46px"},""))),tb),
-      el("div",{class:"row"},wAdd)));
+      el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:30px;text-align:center"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:50px"},""))),tb),
+      el("div",{class:"exfoot"},wAdd)));
     wAdd.addEventListener("click",()=>{
       const last=ex.sets[ex.sets.length-1]||{kg:"",reps:""};
       const st={kg:last.kg,reps:last.reps};
@@ -1081,8 +1506,10 @@ function renderVol(){
   const max=niceMax(Math.max(...wk.map(x=>x.v)));axes(svg,W,H,L,B,T,max,0,v=>fmtK(v));
   const bw=(W-L-6)/wk.length;
   wk.forEach((x,i)=>{const h=(H-B-T)*x.v/max;const cur=i===wk.length-1;
-    svg.append(sv("rect",{x:L+i*bw+bw*0.18,y:H-B-h,width:bw*0.64,height:Math.max(h,0),rx:3,fill:cur?"var(--accent)":"var(--plate-white)",opacity:cur?1:.55}));
-    svg.append(sv("text",{x:L+i*bw+bw/2,y:H-6,"text-anchor":"middle"},`${x.d.getMonth()+1}/${x.d.getDate()}`))});
+    svg.append(sv("rect",{x:L+i*bw+bw*0.2,y:H-B-h,width:bw*0.6,height:Math.max(h,0),rx:4,fill:cur?"var(--fg)":"var(--bar)"}));
+    svg.append(sv("text",{x:L+i*bw+bw/2,y:H-6,"text-anchor":"middle",style:cur?"fill:var(--fg);font-weight:600":""},md(x.d)))});
+  $("v-now").textContent=fmtK(wk[7].v);
+  $("v-prev").textContent=`上週 ${fmtK(wk[6].v)}`;
 }
 function line(svg,pts,W,H,L,B,T,fmt,color){
   svg.replaceChildren();
@@ -1092,38 +1519,53 @@ function line(svg,pts,W,H,L,B,T,fmt,color){
   const t0=parse(pts[0].d).getTime(),t1=parse(pts[pts.length-1].d).getTime();
   const X=d=>L+6+(W-L-18)*((parse(d).getTime()-t0)/((t1-t0)||1)),Y=v=>H-B-(H-B-T)*(v-lo)/(hi-lo);
   const path=pts.map((p,i)=>`${i?"L":"M"}${X(p.d).toFixed(1)},${Y(p.v).toFixed(1)}`).join("");
-  svg.append(sv("path",{d:path+`L${X(pts[pts.length-1].d)},${H-B}L${X(pts[0].d)},${H-B}Z`,fill:color,opacity:.12}));
-  svg.append(sv("path",{d:path,fill:"none",stroke:color,"stroke-width":2.2,"stroke-linejoin":"round"}));
-  pts.forEach((p,i)=>{const last=i===pts.length-1;svg.append(sv("circle",{cx:X(p.d),cy:Y(p.v),r:last?4.5:2.2,fill:last?color:"var(--surface)",stroke:color,"stroke-width":1.5}))});
-  const lp=pts[pts.length-1];svg.append(sv("text",{x:Math.min(X(lp.d),W-8),y:Y(lp.v)-9,"text-anchor":"end",style:"fill:var(--fg);font-weight:600"},fmt(lp.v)));
-  [pts[0],lp].forEach((p,i)=>{const d=parse(p.d);svg.append(sv("text",{x:X(p.d),y:H-6,"text-anchor":i?"end":"start"},`${d.getMonth()+1}/${d.getDate()}`))});
+  svg.append(sv("path",{d:path+`L${X(pts[pts.length-1].d)},${H-B}L${X(pts[0].d)},${H-B}Z`,fill:color,opacity:.1}));
+  svg.append(sv("path",{d:path,fill:"none",stroke:color,"stroke-width":2.4,"stroke-linejoin":"round","stroke-linecap":"round"}));
+  pts.forEach((p,i)=>{const last=i===pts.length-1;svg.append(sv("circle",{cx:X(p.d),cy:Y(p.v),r:last?5:2.4,fill:last?color:"var(--surface)",stroke:last?"var(--surface)":color,"stroke-width":last?2:1.5}))});
+  const lp=pts[pts.length-1];svg.append(sv("text",{x:Math.min(X(lp.d),W-8),y:Y(lp.v)-10,"text-anchor":"end",style:"fill:var(--fg);font-weight:600"},fmt(lp.v)));
+  [pts[0],lp].forEach((p,i)=>{const d=parse(p.d);svg.append(sv("text",{x:X(p.d),y:H-6,"text-anchor":i?"end":"start"},md(d)))});
 }
 function render1rm(){
   const name=$("ex-sel").value;const pts=[];
   [...S.workouts].reverse().forEach(w=>{const e=w.exercises.find(x=>x.name===name);if(!e)return;const v=Math.max(...e.sets.map(s=>e1rm(s.kg,s.reps)));if(v>0)pts.push({d:w.date,v})});
-  line($("c-1rm"),pts,340,170,40,22,16,v=>Math.round(v)+"",`var(--plate-${({"腿":"red","胸":"blue","背":"green","肩":"yellow"})[G(name)]||"white"})`);
+  line($("c-1rm"),pts,340,170,40,22,16,v=>Math.round(v)+"",`var(--plate-${({"腿":"red","臀":"red","胸":"blue","背":"green","肩":"yellow"})[G(name)]||"white"})`);
+  $("rm-now").textContent=pts.length?Math.round(pts[pts.length-1].v):"—";
+  const dl=$("rm-delta");
+  if(pts.length>=2){const d=Math.round(pts[pts.length-1].v-pts[0].v);dl.textContent=`${d>=0?"+":""}${d} 公斤 · ${pts.length} 次`;dl.hidden=false}
+  else dl.hidden=true;
 }
+let prsAll=false;
 function renderProgress(){
   renderVol();
   const b=bests();const names=Object.keys(b).filter(n=>b[n].e>0);
   const sel=$("ex-sel");const cur=sel.value;sel.replaceChildren(...names.map(n=>el("option",{value:n},n)));
   if(names.includes(cur))sel.value=cur;
-  if(names.length)render1rm();else line($("c-1rm"),[],340,170,40,22,16,String,"var(--accent)");
-  const pr=$("prs");pr.replaceChildren(el("span",{class:"h"},"動作"),el("span",{class:"h"},"最佳組"),el("span",{class:"h",style:"text-align:right"},"估算 1RM"));
+  if(names.length)render1rm();else{line($("c-1rm"),[],340,170,40,22,16,String,"var(--fg)");$("rm-now").textContent="—";$("rm-delta").hidden=true}
+  const pr=$("prs");pr.replaceChildren();
   const all=Object.keys(b).sort((x,y)=>b[y].e-b[x].e);
-  if(!all.length)pr.append(el("span",{class:"hint",style:"grid-column:1/-1"},"完成訓練後會列出每個動作的最佳表現。"));
-  all.forEach(n=>pr.append(el("span",{class:"row",style:"gap:8px"},el("span",{class:"dot","data-g":G(n)}),n),el("span",{class:"num"},b[n].kg?`${b[n].kg}×${b[n].reps}`:`自體重×${b[n].reps}`),el("span",{class:"num",style:"text-align:right;font-weight:600"},b[n].e?Math.round(b[n].e)+" kg":"—")));
+  if(!all.length)pr.append(el("span",{class:"hint",style:"padding:12px 0"},"完成訓練後會列出每個動作的最佳表現。"));
+  const LIM=5;
+  all.slice(0,prsAll?all.length:LIM).forEach(n=>pr.append(el("div",{class:"pr"},
+    el("span",{},el("span",{class:"dot","data-g":G(n)}),el("span",{class:"nm"},n)),
+    el("span",{class:"num hint"},b[n].kg?`${b[n].kg} × ${b[n].reps}`:`自體重 × ${b[n].reps}`),
+    el("span",{class:"num",style:"text-align:right;font-weight:600"},b[n].e?String(Math.round(b[n].e)):"—"))));
+  if(all.length>LIM)pr.append(el("button",{type:"button",class:"disclose",style:"justify-content:center",onclick:()=>{prsAll=!prsAll;renderProgress()}},prsAll?"只看前 5 個":`顯示全部 ${all.length} 個動作`));
   drawBw();renderBwList();
 }
 function drawBw(){
   const bw=[...S.bodyweight].sort((a,c)=>a.date.localeCompare(c.date)).map(x=>({d:x.date,v:x.kg}));
-  line($("c-bw"),bw,340,150,40,22,16,v=>v.toFixed(1),"var(--accent)");
+  line($("c-bw"),bw,340,150,40,22,16,v=>v.toFixed(1),"var(--fg)");
+  if(!bw.length){$("bw-now").textContent="—";$("bw-delta").textContent="公斤";return}
+  const last=bw[bw.length-1].v,d=+(last-bw[0].v).toFixed(1);
+  $("bw-now").textContent=last.toFixed(1);
+  $("bw-delta").textContent=bw.length>1?`公斤 · ${d>0?"+":d<0?"−":"±"}${Math.abs(d).toFixed(1)}`:"公斤";
 }
 let bwAll=false;
 const BW_LIM=8;
 function renderBwList(){
   const box=$("bw-list");box.replaceChildren();
   const rows=[...S.bodyweight].sort((a,b)=>b.date.localeCompare(a.date));
+  $("bw-toggle-label").textContent=rows.length?`修改過往體重（${rows.length} 筆）`:"修改過往體重";
   if(!rows.length){box.append(el("li",{class:"hint",style:"display:block"},"記錄體重之後，可以在這裡改數字或刪掉記錯的那天。"));return}
   rows.slice(0,bwAll?rows.length:BW_LIM).forEach(r=>{
     const d=parse(r.date);
@@ -1139,9 +1581,12 @@ function renderBwList(){
       el("button",{type:"button",class:"iconbtn","aria-label":`刪除 ${d.getMonth()+1} 月 ${d.getDate()} 日的體重`,
         onclick:()=>{S.bodyweight=S.bodyweight.filter(x=>x.date!==r.date);save();drawBw();renderBwList();toast("已刪除這筆體重")}},"✕")));
   });
-  if(!bwAll&&rows.length>BW_LIM)box.append(el("li",{style:"display:block;border:0;background:none;padding:0"},
+  if(!bwAll&&rows.length>BW_LIM)box.append(el("li",{style:"display:block;border:0;padding:0"},
     el("button",{type:"button",class:"btn ghost",onclick:()=>{bwAll=true;renderBwList()}},`顯示全部 ${rows.length} 筆`)));
 }
+$("bw-toggle").addEventListener("click",()=>{
+  const w=$("bw-wrap"),open=w.hidden;w.hidden=!open;$("bw-toggle").setAttribute("aria-expanded",String(open));
+});
 $("ex-sel").addEventListener("change",render1rm);
 $("bw-form").addEventListener("submit",e=>{e.preventDefault();const v=parseFloat($("bw-input").value);
   if(!(v>=20&&v<=300)){toast("請輸入 20 到 300 之間的體重（公斤）");return}
@@ -1152,7 +1597,12 @@ $("bw-form").addEventListener("submit",e=>{e.preventDefault();const v=parseFloat
 /* ---------- backup (PWA build only) ---------- */
 if(document.documentElement.dataset.build==="pwa"){
   $("backup").hidden=false;
-  const showLast=()=>{$("backup-last").textContent=S.lastBackup?`上次匯出：${S.lastBackup}`:"還沒有匯出過備份。"};showLast();
+  // never having exported is the state that loses people's logs, so it gets the warning colour
+  const showLast=()=>{
+    $("backup-last").textContent=S.lastBackup?`上次匯出：${S.lastBackup}`:"還沒有匯出過備份。";
+    $("backup-title").textContent=S.lastBackup?"資料備份":"還沒有備份過";
+    $("backup").classList.toggle("warn",!S.lastBackup);
+  };showLast();
   $("export").addEventListener("click",()=>{
     const data=JSON.stringify({app:"liftsync",exported:new Date().toISOString(),data:{...S,draft:null}},null,1);
     const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type:"application/json"}));
@@ -1172,7 +1622,7 @@ if(document.documentElement.dataset.build==="pwa"){
     const prev=S,pw=wEdit,pe=editing;
     const pr={end:restEnd,total:restTotal,alerted:restAlerted};
     try{
-      S=normalize(pending);S.sample=false;wEdit=null;editing=null;stopRest();
+      S=normalize(pending);S.sample=false;wEdit=null;editing=null;stopRest();closeSheet();
       renderAll();              // render first: a backup that throws must not be saved
     }catch(err){
       // put back everything the attempt tore down, not just S — the rest was still
@@ -1192,7 +1642,7 @@ if(document.documentElement.dataset.build==="pwa"){
 $("clear-sample").addEventListener("click",()=>$("clear-confirm").hidden=false);
 $("clear-no").addEventListener("click",()=>$("clear-confirm").hidden=true);
 $("clear-yes").addEventListener("click",()=>{S={ver:3,workouts:[],bodyweight:[],draft:null,sample:false,custom:S.custom,routines:S.routines,settings:S.settings};save();
-  wEdit=null;editing=null;stopRest();$("clear-confirm").hidden=true;renderAll();toast("已清除範例資料")});
+  wEdit=null;editing=null;closeSheet();stopRest();$("clear-confirm").hidden=true;renderAll();toast("已清除範例資料")});
 
 function renderAll(){renderSummary();renderPicker();renderRestSettings();renderAlertToggle();renderDraft();tick();if(!$("tab-history").hidden)renderHistory();if(!$("tab-progress").hidden)renderProgress()}
 renderAll();restoreRest();clearRestNote();
@@ -1205,6 +1655,6 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 </script>
-<!-- LiftSync v1.1.1 -->
+<!-- LiftSync v1.2.0 -->
 </body>
 </html>

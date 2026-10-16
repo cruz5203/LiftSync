@@ -1,5 +1,5 @@
 // LiftSync service worker — bump VERSION on every deploy so phones pick up the update
-const VERSION = "liftsync-1.1.1";
+const VERSION = "liftsync-1.2.0";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/rounded/icon-32.png", "./icons/rounded/icon-192.png", "./icons/rounded/icon-512.png",
   "./icons/ios/icon-180.png", "./icons/maskable-192.png", "./icons/rounded/icon-96.png"];
