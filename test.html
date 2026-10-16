@@ -274,7 +274,7 @@ fresh();show("history");
   $("finish").click();
   ok("完成訓練也擋負的次數",!!S.draft&&$("toast").textContent.includes("次數"),$("toast").textContent);
   S.draft.exercises[0].sets[0].reps=5;
-  $("finish").click();
+  $("finish").click();$("finish-yes").click();
   ok("沒打勾的亂數字不影響完成訓練",S.draft===null);
 }
 
@@ -297,7 +297,7 @@ ok("沒有自訂動作時不顯示管理按鈕",$("custom-manage").hidden);
 {
   S.draft.exercises.find(e=>e.name==="測試動作甲").sets=[{kg:60,reps:5,done:true}];
   S.settings.exRest["測試動作甲"]=150;
-  $("finish").click();
+  $("finish").click();$("finish-yes").click();
   S.routines.push({id:"rt",name:"測試範本",exercises:[{name:"測試動作甲",sets:3}]});save();
   const pr=bests()["測試動作甲"].e;
   openManage();
@@ -604,8 +604,67 @@ fresh();show("today");startRoutine(S.routines[0]);
   ok("放棄訓練會清掉計時",restEnd===0&&localStorage.getItem(RK)===null);
   startRoutine(S.routines[0]);
   S.draft.exercises[0].sets[0]={kg:100,reps:5,done:true};
-  startRest(90);$("finish").click();
+  startRest(90);$("finish").click();$("finish-yes").click();
   ok("完成訓練也會清掉計時",restEnd===0&&localStorage.getItem(RK)===null);
+}
+
+/* ============================ 訓練中的操作 ============================ */
+G("訓練中的操作");
+const LIB=allEx().map(e=>e.name);
+const frame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[
+    {name:LIB[0],sets:[{kg:60,reps:5,done:false},{kg:60,reps:5,done:false}]},
+    {name:LIB[1],sets:[{kg:40,reps:10,done:false},{kg:40,reps:10,done:false}]}]};
+  save();renderDraft();
+  $("finish").click();
+  ok("沒有打勾的組時不會跳確認",!!S.draft&&$("finish-confirm").hidden);
+  const cards=()=>$("draft-list").querySelectorAll(".panel.ex");
+  cards()[1].querySelector("button.check").click();
+  ok("先做第二個動作，下一組跟著它",activeSet().ex===S.draft.exercises[1]&&activeSet().n===2);
+  ok("休息列也指向它",$("rest-sub").textContent.includes(LIB[1]),$("rest-sub").textContent);
+  ok("大按鈕卡片在第二個動作",!cards()[1].querySelector(".setfocus").hidden&&cards()[0].querySelector(".setfocus").hidden);
+  cards()[1].querySelectorAll("button.check")[1].click();
+  ok("那個動作做完就回到第一個沒做完的",activeSet().ex===S.draft.exercises[0]&&activeSet().n===1);
+  stopRest();
+  $("finish").click();
+  ok("還有沒打勾的組要先確認",!!S.draft&&!$("finish-confirm").hidden&&$("finish-msg").textContent.includes("2 組"),$("finish-msg").textContent);
+  $("finish-no").click();
+  ok("按繼續練什麼都不動",!!S.draft&&$("finish-confirm").hidden);
+  const n=S.draft.exercises.length;
+  addEx(LIB[0]);
+  ok("同一個動作不會加兩次",S.draft.exercises.length===n&&$("toast").textContent.includes("已經有"),$("toast").textContent);
+  $("d-add").click();showAll=true;renderPicker();
+  const body=$("picker-panel").querySelector(".sh-body");
+  body.scrollTop=300;const top=body.scrollTop;
+  const pick=allEx().find(e=>!S.draft.exercises.some(x=>x.name===e.name)).name;
+  addEx(pick);
+  ok("加入動作後清單不會跳回最上面",top>0&&body.scrollTop===top,top+" -> "+body.scrollTop);
+  closeSheet();
+  S.draft.exercises.forEach(e=>e.sets.forEach(s=>s.done=true));save();
+  $("finish").click();
+  ok("全部打勾就直接完成",S.draft===null);
+}
+{
+  fresh();show("today");
+  // ten workouts, newest first, one exercise each; the library order is deliberately reversed
+  S.workouts=LIB.slice(0,10).reverse().map((x,i)=>({id:"t"+i,date:ymd(new Date(Date.now()-(i+1)*864e5)),exercises:[{name:x,sets:[{kg:20,reps:8}]}]}));
+  save();startRoutine(S.routines[0]);$("d-add").click();
+  const rec=[...$("picker").querySelectorAll(".prow.recent .pn")].map(x=>x.textContent);
+  ok("最近練過照時間排，最新的在前",rec[0]===LIB[9]&&rec[1]===LIB[8],rec.join("、"));
+  ok("最近練過只列幾個",rec.length>0&&rec.length<=8,String(rec.length));
+  closeSheet();$("discard").click();$("discard-yes").click();
+}
+{
+  fresh();show("today");startRoutine(S.routines[0]);
+  for(let k=0;k<20&&!getComputedStyle(document.documentElement).getPropertyValue("--dock-h");k++)await frame();
+  const h0=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dock-h"));
+  $("rest-cfg").click();
+  for(let k=0;k<20&&parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dock-h"))===h0;k++)await frame();
+  const box=document.querySelector(".restbox"),h1=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dock-h"));
+  ok("展開休息設定時頁面留出足夠空間",h1===box.offsetHeight&&h1>h0,h0+" -> "+h1);
+  $("rest-cfg").click();$("discard").click();$("discard-yes").click();
 }
 
 /* ============================ 無障礙 ============================ */

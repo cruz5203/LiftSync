@@ -81,7 +81,7 @@ button{cursor:pointer}
 :focus-visible{outline:2px solid var(--fg);outline-offset:2px}
 .app{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:20px calc(var(--nav-h) + 32px);display:flex;flex-direction:column;gap:20px}
 /* while a workout is on screen the rest dock sits above the tab bar */
-body:has(#tab-today:not([hidden]) #draft:not([hidden])) .app{padding-bottom:calc(var(--nav-h) + 120px)}
+body:has(#tab-today:not([hidden]) #draft:not([hidden])) .app{padding-bottom:calc(var(--nav-h) + var(--dock-h,100px) + 20px)}
 
 /* ---------- type ---------- */
 header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
@@ -350,7 +350,7 @@ nav.bar button[aria-current="page"]{color:var(--fg)}
 nav.bar button[aria-current="page"] span{background:var(--lime);color:var(--lime-ink)}
 nav.bar button:focus-visible{outline-offset:-4px}
 .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 12px);transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:11px 16px;border-radius:14px;font-size:.9rem;font-weight:500;max-width:calc(100% - 32px);width:max-content;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.2)}
-body:has(#tab-today:not([hidden]) #draft:not([hidden])) .toast{bottom:calc(var(--nav-h) + 96px)}
+body:has(#tab-today:not([hidden]) #draft:not([hidden])) .toast{bottom:calc(var(--nav-h) + var(--dock-h,76px) + 20px)}
 body:has(.sheet.open) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 @media (prefers-reduced-motion:no-preference){.check{transition:background .15s}}
 </style>
@@ -420,6 +420,10 @@ body:has(.sheet.open) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))
         <div class="row">
           <div class="tt"><h2 id="draft-title">進行中的訓練</h2><span class="hint" id="d-prog"></span></div>
           <button class="btn primary" id="finish" type="button">完成訓練</button>
+        </div>
+        <div class="confirm" id="finish-confirm" hidden>
+          <div class="row spread"><span id="finish-msg"></span>
+            <span class="row"><button class="btn ghost" id="finish-no" type="button">繼續練</button><button class="btn primary" id="finish-yes" type="button">完成訓練</button></span></div>
         </div>
         <div class="pbar" aria-hidden="true"><i id="d-bar"></i></div>
       </div>
@@ -724,6 +728,8 @@ function show(t){
 /* ---------- exercise sheet ---------- */
 // one picker serves the workout, the routine editor and the record editor; it lives in
 // whichever slot owns it and slides up over the page when asked for
+// moving a node detaches it, which resets the list's scroll, so re-home only when the owner changes
+function homeSheet(slot){const p=$("picker-panel"),t=$(slot);if(p.parentNode!==t)t.append(p)}
 function openSheet(){
   $("picker-panel").classList.add("open");$("scrim").hidden=false;
   document.body.style.overflow="hidden";renderPicker();
@@ -779,7 +785,8 @@ function renderPicker(){
   chipRow($("f-eq"),["全部",...EQUIP],fEq,o=>{fEq=o;showAll=false;renderPicker()});
   $("f-eq").firstElementChild.textContent="所有器材";
   const q=$("search").value.trim();
-  const used=new Set(S.workouts.flatMap(w=>w.exercises.map(e=>e.name)));
+  // workouts are kept newest first, so first sighting = how recently it was trained
+  const last=new Map();S.workouts.forEach((w,i)=>w.exercises.forEach(e=>{if(!last.has(e.name))last.set(e.name,i)}));
   const have=new Set(pickTarget().map(e=>e.name));
   const list=allEx().filter(e=>(fG==="全部"||e.g===fG)&&(fEq==="全部"||e.eq===fEq)&&(!q||(e.name+e.g+e.eq).includes(q)));
   const p=$("picker");p.replaceChildren();
@@ -793,7 +800,9 @@ function renderPicker(){
         el("span",{class:"pe"},`${e.g} · ${e.eq}${e.custom?" · 自訂":""}${isIn?" · 已在清單裡":prev&&prev[0]?` · 上次 ${prev[0].kg} × ${prev[0].reps}`:""}`)),
       isIn?el("span",{class:"have"},icon("check"),"已加入"):el("span",{class:"add"},icon("plus")));
   };
-  const rec=list.filter(e=>used.has(e.name)),rest=list.filter(e=>!used.has(e.name));
+  const RECENT=8;
+  const rec=list.filter(e=>last.has(e.name)).sort((a,b)=>last.get(a.name)-last.get(b.name)).slice(0,RECENT);
+  const inRec=new Set(rec.map(e=>e.name)),rest=list.filter(e=>!inRec.has(e.name));
   if(rec.length){p.append(el("span",{class:"sec"},"最近練過"));rec.forEach(e=>p.append(row(e,true)))}
   if(rest.length){
     p.append(el("span",{class:"sec"},`動作庫 · ${rest.length} 個`));
@@ -945,6 +954,7 @@ function addEx(name){
   if(editing){if(editing.exercises.some(e=>e.name===name)){toast(`範本裡已經有${name}`);return}
     editing.exercises.push({name,sets:(lastSetsFor(name)||[0,0,0]).length});renderEdit();toast(`已加入${name}`);return}
   if(!S.draft){toast("先開始一次訓練，才能加入動作");return}
+  if(S.draft.exercises.some(e=>e.name===name)){toast(`今天的訓練裡已經有${name}`);return}
   const prev=lastSetsFor(name);
   const sets=prev?prev.map(s=>({kg:s.kg,reps:s.reps,done:false})):[{kg:"",reps:"",done:false}];
   S.draft.exercises.push({name,sets});save();exOpen[name]=true;renderDraft();
@@ -972,9 +982,13 @@ function restoreRest(){
 }
 function startRest(sec){restTotal=sec;restEnd=Date.now()+sec*1000;restAlerted=false;saveRest();clearInterval(restIv);tick();restIv=setInterval(tick,250)}
 function stopRest(){restEnd=0;restAlerted=false;clearInterval(restIv);saveRest()}
-// the first unticked set of the workout, which the focus card and the dock both point at
+// the next set, which the focus card and the dock both point at: the exercise you last
+// ticked a set in while it has sets left (the rack may be busy, so order is not a given),
+// otherwise the first unticked set of the workout
+let curEx=null;
 function activeSet(){
   if(!S.draft)return null;
+  if(curEx&&S.draft.exercises.includes(curEx)){const i=curEx.sets.findIndex(s=>!s.done);if(i>=0)return{ex:curEx,st:curEx.sets[i],n:i+1}}
   for(const ex of S.draft.exercises){const i=ex.sets.findIndex(s=>!s.done);if(i>=0)return{ex,st:ex.sets[i],n:i+1}}
   return null;
 }
@@ -1001,6 +1015,10 @@ function tick(){
     }
   }
 }
+// the dock is fixed, so the page has to make room for it or opening the settings would
+// cover the buttons at the bottom with nothing left to scroll
+if(window.ResizeObserver)new ResizeObserver(()=>{const h=document.querySelector(".restbox").offsetHeight;
+  if(h)document.documentElement.style.setProperty("--dock-h",h+"px")}).observe(document.querySelector(".restbox"));
 $("rest-cfg").addEventListener("click",()=>{
   const p=$("rest-settings"),open=p.hidden;p.hidden=!open;
   $("rest-cfg").setAttribute("aria-expanded",String(open));
@@ -1114,8 +1132,8 @@ function renderDraft(){
   const has=!!S.draft;
   $("no-draft").hidden=has||!!editing;$("draft").hidden=!has||!!editing;$("r-edit").hidden=!editing;
   if(editing)return renderEdit();
-  if(!has){focusers=[];return renderRoutines();}
-  $("d-picker-slot").append($("picker-panel"));
+  if(!has){focusers=[];$("finish-confirm").hidden=true;return renderRoutines();}
+  homeSheet("d-picker-slot");
   $("draft-title").textContent=S.draft.name||"進行中的訓練";
   const list=$("draft-list");list.replaceChildren();focusers=[];
   if(!S.draft.exercises.length)list.append(el("div",{class:"panel empty"},"按下方「加入動作」開始。上次做過的動作會自動帶入重量與次數。"));
@@ -1141,7 +1159,7 @@ function renderDraft(){
       ck.addEventListener("click",()=>{
         st.done=!st.done;save();
         tr.classList.toggle("done",st.done);ck.setAttribute("aria-pressed",String(st.done));
-        if(st.done){primeAudio();startRest(restFor(ex.name))}
+        if(st.done){curEx=ex;primeAudio();startRest(restFor(ex.name))}
         refreshFocus();
       });
       rows.set(st,{tr,kg,rp,ck});
@@ -1232,12 +1250,29 @@ $("start").addEventListener("click",()=>{S.draft={date:ymd(new Date()),exercises
 $("discard").addEventListener("click",()=>$("discard-confirm").hidden=false);
 $("discard-no").addEventListener("click",()=>$("discard-confirm").hidden=true);
 $("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-confirm").hidden=true;closeSheet();stopRest();tick();renderDraft()});
-$("finish").addEventListener("click",()=>{
+// the button sits in the sticky header, always under a thumb, so when it would drop sets
+// that are not ticked yet it asks first; with everything ticked there is nothing to lose
+function finishable(){
   // only ticked rows get saved, so only ticked rows are judged
   const bad=badSet(S.draft.exercises,st=>st.done&&!blank(st.reps));
-  if(bad){toast(bad);return}
+  if(bad){toast(bad);return null}
   const ex=S.draft.exercises.map(e=>({name:e.name,sets:e.sets.filter(s=>s.done&&+s.reps>0).map(s=>({kg:+s.kg||0,reps:+s.reps}))})).filter(e=>e.sets.length);
-  if(!ex.length){toast("還沒有打勾完成的組。完成一組後按 ✓ 再結束訓練。");return}
+  if(!ex.length){toast("還沒有打勾完成的組。完成一組後按 ✓ 再結束訓練。");return null}
+  return ex;
+}
+$("finish").addEventListener("click",()=>{
+  if(!finishable())return;
+  const left=S.draft.exercises.reduce((n,e)=>n+e.sets.filter(s=>!s.done).length,0);
+  if(!left)return finishWorkout();
+  $("finish-msg").textContent=`還有 ${left} 組沒打勾，完成後不會保存。`;
+  $("finish-confirm").hidden=false;
+});
+$("finish-no").addEventListener("click",()=>$("finish-confirm").hidden=true);
+$("finish-yes").addEventListener("click",finishWorkout);
+function finishWorkout(){
+  $("finish-confirm").hidden=true;
+  if(!S.draft)return;
+  const ex=finishable();if(!ex)return;
   const before=bests();
   const w={id:"w"+Date.now(),date:S.draft.date,routine:S.draft.routine||null,exercises:ex};
   S.workouts.unshift(w);S.workouts.sort((a,b)=>b.date.localeCompare(a.date));
@@ -1245,7 +1280,7 @@ $("finish").addEventListener("click",()=>{
   const after=bests();const prs=Object.keys(after).filter(k=>after[k].e>(before[k]?.e||0)+0.01);
   renderDraft();renderSummary();window.scrollTo(0,0);
   toast(`已儲存：總量 ${fmtK(vol(w))} 公斤`+(prs.length?`，新紀錄：${prs.join("、")}`:""));
-});
+}
 
 /* ---------- routines ---------- */
 let editing=null; // {id|null, name, exercises:[{name,sets}]}
@@ -1306,7 +1341,7 @@ function renderEdit(){
   $("r-title").textContent=editing.id?"編輯範本":"新增範本";
   $("r-delete").hidden=!editing.id;
   if(document.activeElement!==$("r-name"))$("r-name").value=editing.name;
-  $("r-picker-slot").append($("picker-panel"));
+  homeSheet("r-picker-slot");
   const ol=$("r-list");ol.replaceChildren();
   if(!editing.exercises.length)ol.append(el("li",{class:"hint",style:"display:block"},"按下方「加入動作」從動作庫挑選。"));
   editing.exercises.forEach((e,i)=>{
@@ -1418,7 +1453,7 @@ function renderWorkoutEdit(){
   const r=S.routines.find(x=>x.id===wEdit.routine);
   $("w-title").textContent=r?`修改「${r.name}」`:"修改紀錄";
   if(document.activeElement!==$("w-date"))$("w-date").value=wEdit.date;
-  $("w-picker-slot").append($("picker-panel"));
+  homeSheet("w-picker-slot");
   const list=$("w-list");list.replaceChildren();
   if(!wEdit.exercises.length)list.append(el("div",{class:"panel empty"},"這筆紀錄裡沒有動作了。按「加入動作」補上，或按「刪除這筆」整筆移除。"));
   wEdit.exercises.forEach((ex,ei)=>{
@@ -1655,6 +1690,6 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 </script>
-<!-- LiftSync v1.2.0 -->
+<!-- LiftSync v1.2.1 -->
 </body>
 </html>
