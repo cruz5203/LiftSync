@@ -837,6 +837,198 @@ fresh();show("today");startRoutine(S.routines[0]);
   stopRest();
 }
 
+/* ============================ 有氧 ============================ */
+G("有氧：記錄時間與距離");
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[]};exOpen={};save();renderDraft();
+  addEx("臥推");addEx("跑步機");
+  const tm=S.draft.exercises.find(e=>e.name==="跑步機");
+  ok("有氧預設一段，欄位是分鐘與公里",tm.sets.length===1&&"min" in tm.sets[0]&&"km" in tm.sets[0]&&!("kg" in tm.sets[0]),JSON.stringify(tm.sets));
+  const card=()=>[...$("draft-list").querySelectorAll(".panel.ex")].find(c=>c.querySelector("h3").textContent==="跑步機");
+  const heads=[...card().querySelectorAll("thead th")].map(t=>t.textContent).join(",");
+  ok("表頭是分鐘、公里",heads==="組,分鐘,公里,",heads);
+  ok("有氧沒有休息時間設定",!card().querySelector(".exrest"));
+  const [mi,km]=card().querySelectorAll("tbody input");
+  ok("輸入格的說明是時間與距離",mi.getAttribute("aria-label")==="第 1 組時間"&&km.getAttribute("aria-label")==="第 1 組距離");
+  mi.value="30";mi.dispatchEvent(new Event("input"));km.value="4.5";km.dispatchEvent(new Event("input"));
+  ok("輸入寫進草稿",tm.sets[0].min===30&&tm.sets[0].km===4.5,JSON.stringify(tm.sets[0]));
+  const bp=S.draft.exercises.find(e=>e.name==="臥推");
+  bp.sets=[{kg:60,reps:5,done:true,at:1}];save();renderDraft();startRest(60);
+  ok("休息列說下一項是有氧",$("rest-sub").textContent.includes("下一項：跑步機"),$("rest-sub").textContent);
+  ok("大按鈕卡片的標題與按鈕",card().querySelector(".setfocus b").textContent==="這次有氧"&&card().querySelector(".setfocus .btn.primary").textContent.includes("完成這項有氧"));
+  stopRest();
+  card().querySelector("button.check").click();
+  ok("打勾有氧不會開始休息",restEnd===0);
+  tm.sets[0].min=0;save();
+  $("finish").click();
+  ok("時間是 0 不能完成",!!S.draft&&$("toast").textContent.includes("時間要填 1 到 600"),$("toast").textContent);
+  tm.sets[0].min=30;tm.sets[0].km=-1;save();
+  $("finish").click();
+  ok("距離是負的不能完成",!!S.draft&&$("toast").textContent.includes("距離要填 0 到 200"),$("toast").textContent);
+  tm.sets[0].km=4.5;save();
+  $("finish").click();
+  const w=S.workouts[0];
+  ok("完成了",S.draft===null);
+  ok("存成分鐘與公里",JSON.stringify(w.exercises.find(e=>e.name==="跑步機").sets)==='[{"min":30,"km":4.5}]',JSON.stringify(w.exercises));
+  ok("重訓照舊存成公斤與次數",JSON.stringify(w.exercises.find(e=>e.name==="臥推").sets)==='[{"kg":60,"reps":5}]');
+  ok("完成提示同時列出總量與有氧",$("toast").textContent.includes("總量 300 公斤")&&$("toast").textContent.includes("有氧 30 分鐘（4.5 公里）"),$("toast").textContent);
+  ok("有氧不算進公斤總量",vol(w)===300,vol(w));
+  ok("有氧不進個人紀錄",!bests()["跑步機"]);
+
+  show("progress");
+  ok("進度頁出現每週有氧",!$("cardio-panel").hidden&&$("cd-now").textContent==="30"&&$("cd-km").textContent.includes("4.5"),$("cd-now").textContent+" / "+$("cd-km").textContent);
+  ok("1RM 選單沒有有氧動作",![...$("ex-sel").options].some(o=>o.value==="跑步機"));
+  ok("個人紀錄清單沒有有氧動作",!$("prs").textContent.includes("跑步機"));
+
+  show("history");
+  const hc=document.querySelector("#hist button.hitem");
+  ok("紀錄卡片列出有氧分鐘",hc.textContent.includes("有氧 30 分")&&hc.getAttribute("aria-label").includes("跑步機 30分鐘"),hc.getAttribute("aria-label"));
+  S.workouts.unshift({id:"cardio-only",date:ymd(new Date()),exercises:[{name:"健身車",sets:[{min:20,km:0}]}]});save();renderHistory();
+  const only=document.querySelector("#hist button.hitem .hvol").textContent;
+  ok("只有有氧的那天顯示分鐘而不是 0 公斤",only==="20分鐘",only);
+  S.workouts.shift();save();
+
+  // correct the saved record
+  openWorkout(S.workouts.find(x=>x.id===w.id));
+  const ec=[...$("w-list").querySelectorAll(".panel.ex")].find(c=>c.querySelector("h3").textContent==="跑步機");
+  const [emi]=ec.querySelectorAll("tbody input");
+  ok("修改畫面也是分鐘與公里",emi.getAttribute("aria-label")==="第 1 組時間"&&emi.value==="30");
+  emi.value="";emi.dispatchEvent(new Event("input"));$("w-save").click();
+  ok("清掉時間就不能存",!!wEdit&&$("toast").textContent.includes("沒有任何一組填了時間"),$("toast").textContent);
+  emi.value="35";emi.dispatchEvent(new Event("input"));$("w-save").click();
+  ok("改好的時間存進去",!wEdit&&JSON.stringify(S.workouts.find(x=>x.id===w.id).exercises.find(e=>e.name==="跑步機").sets)==='[{"min":35,"km":4.5}]');
+
+  show("today");
+  S.routines.push({id:"rc",name:"有氧日",exercises:[{name:"跑步機",sets:1}]});save();
+  startRoutine(S.routines.find(r=>r.id==="rc"));
+  ok("下次開始會帶入上次的時間與距離",S.draft.exercises[0].sets[0].min===35&&S.draft.exercises[0].sets[0].km===4.5,JSON.stringify(S.draft.exercises[0].sets));
+  ok("並顯示上次的數字",document.querySelector("#draft-list .setfocus").textContent.includes("上次 35 分鐘 · 4.5 公里"));
+  const de=document.documentElement;
+  ok("有氧卡片沒有橫向溢出",de.scrollWidth<=de.clientWidth+1,de.scrollWidth+" / "+de.clientWidth);
+  $("discard").click();$("discard-yes").click();
+}
+G("有氧：自訂動作");
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[]};save();renderDraft();
+  $("d-add").click();
+  $("custom-open").click();typeName("測試有氧");$("c-g").value="有氧";submitCustom();
+  const ex=S.draft.exercises.find(e=>e.name==="測試有氧");
+  ok("自訂有氧動作用分鐘與公里",ex&&"min" in ex.sets[0],ex&&JSON.stringify(ex.sets));
+  ex.sets=[{min:15,km:2,done:true,at:1}];save();
+  closeSheet();$("finish").click();
+  ok("存成有氧",JSON.stringify(S.workouts[0].exercises[0].sets)==='[{"min":15,"km":2}]');
+  openManage();firstRow()[0].click();$("c-g").value="胸";submitCustom();
+  ok("有紀錄時不能改成重訓部位",S.custom[0].g==="有氧"&&$("toast").textContent.includes("部位要選得一致"),$("toast").textContent);
+  closeCustomForm();
+  S.custom=[];save();   // removed from the library; its records stay
+  ok("移出動作庫後紀錄仍當作有氧",isCardio("測試有氧")&&!bests()["測試有氧"]);
+  $("custom-open").click();typeName("測試有氧");$("c-g").value="背";submitCustom();
+  ok("用重訓部位加回來會被擋下",!S.custom.length,$("toast").textContent);
+  $("c-g").value="有氧";submitCustom();
+  ok("用有氧加回來就接得上",S.custom.length===1&&S.custom[0].g==="有氧");
+  closeSheet();$("discard").click();$("discard-yes").click();
+}
+{
+  // made before 1.3.0 added a built-in 跳繩: the user's own entry and its reps must win
+  fresh();
+  S.custom=[{name:"跳繩",g:"核心",eq:"自體重",custom:true}];
+  S.workouts.unshift({id:"jr",date:ymd(new Date()),exercises:[{name:"跳繩",sets:[{kg:0,reps:100}]}]});save();
+  ok("舊的同名自訂動作仍是重訓",!isCardio("跳繩")&&G2("跳繩")==="核心");
+  ok("動作庫裡只有一個跳繩",allEx().filter(e=>e.name==="跳繩").length===1);
+  show("today");S.draft={date:ymd(new Date()),exercises:[]};save();renderDraft();addEx("跳繩");
+  ok("帶入的是上次的次數",S.draft.exercises[0].sets[0].reps===100,JSON.stringify(S.draft.exercises[0].sets));
+  $("discard").click();$("discard-yes").click();
+  // removing that entry must not hand its reps over to the built-in cardio 跳繩
+  S.custom=[];save();
+  ok("移除後舊的跳繩紀錄仍是重訓",!isCardio("跳繩")&&vol(S.workouts[0])===0&&!cardioOf(S.workouts[0]).min);
+  ok("沒有紀錄的內建有氧仍是有氧",isCardio("划船機"));
+  ok("內建的有氧跳繩讓出名字",!allEx().some(e=>e.name==="跳繩")&&G2("跳繩")==="其他");
+  $("custom-open").click();typeName("跳繩");$("c-g").value="核心";submitCustom();
+  ok("可以把舊的跳繩用原部位加回來",S.custom.length===1&&S.custom[0].g==="核心",$("toast").textContent);
+  closeSheet();
+}
+{
+  // only the weight typed so far: that is already a lift, and switching would drop the 60
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[]};save();renderDraft();
+  $("d-add").click();$("custom-open").click();typeName("測試推舉機");submitCustom();
+  closeSheet();S.draft.exercises[0].sets[0].kg=60;save();
+  $("d-add").click();openManage();firstRow()[0].click();$("c-g").value="有氧";submitCustom();
+  ok("只填了重量也不能改成有氧",S.custom[0].g!=="有氧"&&$("toast").textContent.includes("重量訓練"),$("toast").textContent);
+  closeSheet();$("discard").click();$("discard-yes").click();
+}
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[{name:"戶外跑步",sets:[{min:"",km:5,done:true,at:1}]}]};save();renderDraft();
+  $("finish").click();
+  ok("只填公里就打勾，不會被默默丟掉",!!S.draft&&$("toast").textContent.includes("時間要填"),$("toast").textContent);
+  S.draft={date:ymd(new Date()),exercises:[{name:"臥推",sets:[{kg:60,reps:5,done:false}]},
+    {name:"跑步機",sets:[{min:10,km:"",done:true,at:1},{min:10,km:"",done:false}]}]};save();renderDraft();
+  const card=[...$("draft-list").querySelectorAll(".panel.ex")].find(c=>c.textContent.includes("跑步機"));
+  card.querySelectorAll("button.check")[0].click();card.querySelectorAll("button.check")[0].click();   // re-tick: 跑步機 is latest
+  startRest(60);syncRestSub();
+  ok("休息列也說第幾段",$("rest-sub").textContent.includes("跑步機 第 2 段"),$("rest-sub").textContent);
+  card.querySelectorAll("button.check")[1].click();
+  ok("有氧打勾會停掉還在跑的休息",!restEnd);
+  $("discard").click();$("discard-yes").click();
+}
+{
+  fresh();
+  editing={id:"rx",name:"有氧日",exercises:[{name:"跑步機",sets:3}]};renderEdit();
+  ok("範本編輯裡有氧寫「段」",$("r-list").textContent.includes("段")&&!$("r-list").textContent.includes("組"),$("r-list").textContent);
+  editing=null;
+}
+{
+  fresh();show("today");
+  S.workouts=[{id:"oc",date:ymd(new Date()),exercises:[{name:"健身車",sets:[{min:25,km:8}]}]}];save();renderSummary();
+  ok("只做有氧的一週，今天頁顯示有氧分鐘",$("s-vol").textContent==="25"&&$("s-vol-u").textContent==="有氧分鐘",$("s-vol").textContent+$("s-vol-u").textContent);
+}
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[{name:"跑步機",sets:[{min:20,km:"",done:false}]}]};save();renderDraft();
+  const labels=[...$("draft-list").querySelectorAll("button")].map(b=>b.textContent);
+  ok("有氧的按鈕說「加一段」",labels.some(t=>t.includes("加一段"))&&!labels.some(t=>t.includes("加一組")),labels.join("|"));
+  S.draft={date:ymd(new Date()),exercises:[{name:"臥推",sets:[{kg:60,reps:0.5,done:true,at:1}]}]};save();renderDraft();
+  $("finish").click();
+  ok("次數不到 1 不能完成",!!S.draft&&$("toast").textContent.includes("次數要填 1 到 999"),$("toast").textContent);
+  $("discard").click();$("discard-yes").click();
+  S.workouts.unshift({id:"rc",date:ymd(new Date()),exercises:[{name:"跑步機",sets:[{min:10.1,km:0},{min:10.2,km:0}]}]});save();
+  show("history");
+  const card=[...document.querySelectorAll(".hitem")].find(b=>b.getAttribute("aria-label").includes("跑步機"));
+  ok("紀錄卡的分鐘也四捨五入",!!card&&card.getAttribute("aria-label").includes("跑步機 20.3分鐘"),card&&card.getAttribute("aria-label"));
+}
+{
+  // added mid-workout with the default group, then corrected before anything was typed
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[]};save();renderDraft();
+  $("d-add").click();$("custom-open").click();typeName("測試橢圓機");submitCustom();
+  openManage();firstRow()[0].click();$("c-g").value="有氧";submitCustom();
+  ok("還沒填數字的動作可以改成有氧",S.custom[0].g==="有氧",$("toast").textContent);
+  closeSheet();$("discard").click();$("discard-yes").click();
+}
+{
+  fresh();show("today");
+  S.draft={date:ymd(new Date()),exercises:[{name:"跑步機",sets:[{min:0.5,km:"",done:true,at:1}]}]};save();renderDraft();
+  $("finish").click();
+  ok("不到 1 分鐘不能完成",!!S.draft&&$("toast").textContent.includes("時間要填 1 到 600"),$("toast").textContent);
+  S.draft.exercises[0].sets=[{min:10.1,km:"",done:true,at:1},{min:10.2,km:"",done:true,at:2}];save();
+  $("finish").click();
+  ok("小數分鐘的加總不會出現雜訊",$("toast").textContent.includes("有氧 20.3 分鐘"),$("toast").textContent);
+  S.workouts=S.workouts.filter(w=>w.exercises.every(e=>e.name==="跑步機"));save();
+  show("history");
+  const hd=document.querySelector("#hist .hghead").textContent;
+  ok("只有有氧的那週不寫 0 公斤",hd.includes("有氧 20.3 分")&&!hd.includes("公斤"),hd);
+  show("progress");
+  ok("每週有氧的數字也四捨五入",$("cd-now").textContent==="20.3",$("cd-now").textContent);
+  show("today");
+  S.routines.push({id:"rc2",name:"有氧日",exercises:[{name:"跑步機",sets:1}]});save();
+  startRoutine(S.routines.find(r=>r.id==="rc2"));
+  ok("有氧範本的提示說帶入時間與距離",$("toast").textContent.includes("時間與距離"),$("toast").textContent);
+  $("discard").click();$("discard-yes").click();
+}
+
 /* ============================ 版面 ============================ */
 G("窄螢幕版面（"+document.documentElement.clientWidth+"px）");
 {

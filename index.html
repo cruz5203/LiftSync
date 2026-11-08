@@ -387,7 +387,7 @@ body:has(.sheet.open) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))
         <div class="days" id="wk-days"></div>
         <div class="wk-stats">
           <div><b id="s-week">0</b><span>次訓練</span></div>
-          <div><b id="s-vol">0</b><span>公斤總量</span></div>
+          <div><b id="s-vol">0</b><span id="s-vol-u">公斤總量</span></div>
           <div><b class="lime" id="s-streak">0</b><span>週連續有練</span></div>
         </div>
       </section>
@@ -513,7 +513,7 @@ body:has(.sheet.open) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))
       <div class="panel">
         <label class="eyebrow" for="w-date">日期</label>
         <input id="w-date" class="field" type="date">
-        <span class="hint">改重量或次數後按下方「儲存修改」才會生效。沒填次數的組會被丟掉。</span>
+        <span class="hint">改數字後按下方「儲存修改」才會生效。沒填次數（有氧是分鐘）的組會被丟掉。</span>
       </div>
       <div id="w-list" style="display:flex;flex-direction:column;gap:12px"></div>
       <button class="btn dashed" id="w-add" type="button"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>加入動作</button>
@@ -537,6 +537,13 @@ body:has(.sheet.open) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))
         <span class="hint" style="text-align:right;padding-top:4px">重量 × 次數<br><span id="v-prev"></span></span>
       </div>
       <svg class="chart" id="c-vol" viewBox="0 0 340 170" role="img" aria-label="近 8 週訓練量長條圖"></svg>
+    </div>
+    <div class="panel" id="cardio-panel" hidden>
+      <div class="kpi">
+        <div><h2>每週有氧</h2><div class="big"><span id="cd-now">0</span><small>分鐘 · 本週</small></div></div>
+        <span class="hint" style="text-align:right;padding-top:4px"><span id="cd-km"></span><br><span id="cd-prev"></span></span>
+      </div>
+      <svg class="chart" id="c-cardio" viewBox="0 0 340 170" role="img" aria-label="近 8 週有氧分鐘長條圖"></svg>
     </div>
     <div class="panel">
       <div class="kpi" style="align-items:center"><h2>估算 1RM</h2>
@@ -590,7 +597,7 @@ body:has(.sheet.open) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
-const GROUPS=["腿","臀","胸","背","肩","手臂","核心"];
+const GROUPS=["腿","臀","胸","背","肩","手臂","核心","有氧"];
 const EQUIP=["器械","纜繩","槓鈴","啞鈴","自體重","壺鈴"];
 const LIB=`腿|器械|腿推機,腿伸展機,坐姿腿彎舉機,俯臥腿彎舉機,哈克深蹲機,史密斯機深蹲,鐘擺深蹲機,站姿提踵機,坐姿提踵機
 腿|槓鈴|槓鈴深蹲,前蹲舉,羅馬尼亞硬舉
@@ -619,19 +626,67 @@ const LIB=`腿|器械|腿推機,腿伸展機,坐姿腿彎舉機,俯臥腿彎舉�
 核心|器械|腹部捲腹機,旋轉軀幹機
 核心|纜繩|跪姿繩索捲腹
 核心|自體重|懸垂抬腿,棒式,捲腹
-核心|壺鈴|壺鈴擺盪`;
+核心|壺鈴|壺鈴擺盪
+有氧|器械|跑步機,滑步機,健身車,飛輪,划船機,階梯機
+有氧|自體重|戶外跑步,快走,跳繩`;
 const BASE=LIB.split("\n").flatMap(l=>{const[g,eq,ns]=l.split("|");return ns.split(",").map(name=>({name,g,eq}))});
 const KEY="liftsync-v1";
 const OLD_KEY="ironlog-v1"; // pre-rename storage, read once so existing data survives
-const allEx=()=>[...BASE,...(S.custom||[])];
-const G=n=>(allEx().find(e=>e.name===n)||{g:"其他"}).g;
+// a custom entry wins over a built-in of the same name (a 跳繩 made before 1.3.0 built one in);
+// so do records of the other kind left by a custom entry since removed — offering the built-in
+// would log cardio next to them, and hiding it lets the old entry be added back
+const allEx=()=>{const c=S.custom||[];
+  return[...BASE.filter(b=>!c.some(x=>x.name===b.name)&&!otherKind(b)),...c]};
+// the same answer as looking n up in allEx(), without rebuilding it for every dot on a long list
+const G=n=>{const c=(S.custom||[]).find(x=>x.name===n);if(c)return c.g;
+  const b=BASE.find(x=>x.name===n);return b&&!otherKind(b)?b.g:"其他"};
 const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const parse=s=>{const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
 const monday=d=>{const x=new Date(d);const k=(x.getDay()+6)%7;x.setDate(x.getDate()-k);x.setHours(0,0,0,0);return x};
 const fmtK=n=>n>=10000?(n/1000).toFixed(1)+"k":Math.round(n).toLocaleString();
-const e1rm=(kg,r)=>r<=0||kg<=0?0:(r===1?kg:kg*(1+r/30));
+const e1rm=(kg,r)=>!(r>0)||!(kg>0)?0:(r===1?kg:kg*(1+r/30));
 const vol=w=>w.exercises.reduce((a,e)=>a+e.sets.reduce((b,s)=>b+(+s.kg||0)*(+s.reps||0),0),0);
+// a lift set is weight × reps; a cardio set is minutes and, optionally, distance. Which one
+// an exercise is follows its group, so every editor reads its columns from here
+const isCardio=n=>{const c=(S.custom||[]).find(x=>x.name===n);if(c)return c.g==="有氧";   // kindClash keeps it in step with its records
+  const b=BASE.find(x=>x.name===n);if(b&&b.g!=="有氧")return false;
+  // records before the built-in cardio group: a lift logged under 跳繩 or 划船機 before they were
+  // built in, by a custom entry since removed, must keep reading as weight × reps
+  const k=recordKind(n);return k?k==="cardio":!!b};
+const otherKind=b=>b.g==="有氧"&&recordKind(b.name)==="lift";   // see allEx
+// which kind of set a name's records hold — read off the fields, not the library — or null.
+// Any one field counts: kg typed with reps still empty is already a lift worth keeping
+const blank=v=>v===""||v==null;
+const setKind=s=>!s?null:!blank(s.min)||!blank(s.km)?"cardio":!blank(s.kg)||!blank(s.reps)?"lift":null;
+const kindIn=(l,n)=>{if(l)for(const e of l.exercises)if(e.name===n)for(const s of e.sets){const k=setKind(s);if(k)return k}return null};
+// the history part is cached until the next save(): the rest dock asks every 250 ms, and a
+// cardio name never done before would otherwise walk the whole history each time
+let kindMemo=null;
+function recordKind(n){
+  if(!kindMemo||kindMemo.ws!==S.workouts)kindMemo={ws:S.workouts,m:new Map()};
+  let k=kindMemo.m.get(n);
+  if(k===undefined){k=null;for(const w of S.workouts)if(k=kindIn(w,n))break;kindMemo.m.set(n,k)}
+  return k||kindIn(S.draft,n)||kindIn(wEdit,n);
+}
+const COLS={
+  lift:[{k:"kg",lbl:"公斤",what:"重量",step:"0.25",im:"decimal",d:2.5,lo:0,max:1000},
+        {k:"reps",lbl:"次數",what:"次數",step:"1",im:"numeric",d:1,lo:1,max:999,need:true}],
+  cardio:[{k:"min",lbl:"分鐘",what:"時間",step:"1",im:"numeric",d:5,lo:1,max:600,need:true},
+          {k:"km",lbl:"公里",what:"距離",step:"0.01",im:"decimal",d:0.5,lo:0,max:200}]
+};
+const cols=n=>COLS[isCardio(n)?"cardio":"lift"];
+const needCol=n=>cols(n).find(c=>c.need),needOf=n=>needCol(n).k;   // the field a set cannot be saved without
+const used=(n,s)=>cols(n).some(c=>!blank(s[c.k]));   // anything typed at all, so it is judged, not dropped
+const copySet=(n,s)=>Object.fromEntries(cols(n).map(c=>[c.k,s&&s[c.k]!=null?s[c.k]:""]));
+const cleanSet=(n,s)=>Object.fromEntries(cols(n).map(c=>[c.k,c.need?+s[c.k]:+s[c.k]||0]));
+const setStr=(n,s)=>isCardio(n)?`${s.min} 分鐘${+s.km>0?` · ${s.km} 公里`:""}`:`${s.kg} × ${s.reps}`;
+const r1=v=>Math.round(v*10)/10;   // sums of decimals pick up float noise (10.1+10.2)
+const cardioOf=w=>{const a={min:0,km:0};w.exercises.forEach(e=>isCardio(e.name)&&e.sets.forEach(s=>{a.min+=+s.min||0;a.km+=+s.km||0}));
+  a.min=r1(a.min);a.km=r1(a.km);return a};
+const r1s=v=>String(r1(v));
+// lifting leads wherever a total is shown; minutes take over only when nothing was lifted
+const kgFirst=(v,m)=>!!v||!m;
 const WD="日一二三四五六";
 const md=d=>`${d.getMonth()+1}/${d.getDate()}`;
 
@@ -702,7 +757,7 @@ function normalize(st){
   return st;
 }
 try{S=normalize(S)}catch(e){S=normalize(seed())}   // unreadable stored state must not brick the app
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const save=()=>{kindMemo=null;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const $=id=>document.getElementById(id);
 const el=(t,a={},...c)=>{const n=document.createElement(t);for(const k in a){if(k==="class")n.className=a[k];else if(k.startsWith("on"))n.addEventListener(k.slice(2),a[k]);else n.setAttribute(k,a[k])}c.flat().forEach(x=>n.append(x));return n};
 const SVGNS="http://www.w3.org/2000/svg";
@@ -748,7 +803,9 @@ function renderSummary(){
   const m0=monday(new Date()),wk=ymd(m0);
   const thisWeek=S.workouts.filter(w=>ymd(monday(parse(w.date)))===wk);
   $("s-week").textContent=thisWeek.length;
-  $("s-vol").textContent=fmtK(thisWeek.reduce((a,w)=>a+vol(w),0));
+  // a cardio-only week would otherwise read "0 公斤總量", as if nothing counted
+  const wv=thisWeek.reduce((a,w)=>a+vol(w),0),wm=r1(thisWeek.reduce((a,w)=>a+cardioOf(w).min,0));
+  const kf=kgFirst(wv,wm);$("s-vol").textContent=kf?fmtK(wv):String(wm);$("s-vol-u").textContent=kf?"公斤總量":"有氧分鐘";
   const weeks=new Set(S.workouts.map(w=>ymd(monday(parse(w.date)))));
   let n=0,d=monday(new Date()); if(!weeks.has(ymd(d)))d.setDate(d.getDate()-7);
   while(weeks.has(ymd(d))){n++;d.setDate(d.getDate()-7)}
@@ -797,7 +854,7 @@ function renderPicker(){
     return el("button",{type:"button",class:"prow"+(recent?" recent":""),onclick:()=>{addEx(e.name);renderPicker()}},
       el("span",{class:"dot","data-g":e.g}),
       el("span",{class:"tx"},el("span",{class:"pn"},e.name),
-        el("span",{class:"pe"},`${e.g} · ${e.eq}${e.custom?" · 自訂":""}${isIn?" · 已在清單裡":prev&&prev[0]?` · 上次 ${prev[0].kg} × ${prev[0].reps}`:""}`)),
+        el("span",{class:"pe"},`${e.g} · ${e.eq}${e.custom?" · 自訂":""}${isIn?" · 已在清單裡":prev&&prev[0]?` · 上次 ${setStr(e.name,prev[0])}`:""}`)),
       isIn?el("span",{class:"have"},icon("check"),"已加入"):el("span",{class:"add"},icon("plus")));
   };
   const RECENT=8;
@@ -876,6 +933,10 @@ function updateCustomHint(){
   if(cEdit)return show(mine());
   h.hidden=true;
 }
+// cardio sets hold minutes and kilometres, lifts hold kilograms and reps; giving a name the
+// other kind of group would leave every set already recorded under it unreadable
+const kindClash=n=>{const k=recordKind(n);return!!k&&k!==($("c-g").value==="有氧"?"cardio":"lift")};
+const kindMsg=n=>{const c=recordKind(n)==="cardio";return `「${n}」已經有${c?"有氧":"重量訓練"}的紀錄，部位要選得一致${c?"（有氧）":"（不能選有氧）"}。`};
 function closeCustomForm(){cEdit=null;$("custom-form").hidden=true;$("c-name").value="";$("c-hint").hidden=true;$("c-cancel").hidden=true;$("c-submit").textContent="加入動作庫"}
 $("custom-open").addEventListener("click",()=>{
   if(!$("custom-form").hidden&&!cEdit){closeCustomForm();return}
@@ -926,6 +987,8 @@ $("custom-form").addEventListener("submit",e=>{
   if(cEdit){
     const c=S.custom.find(x=>x.name===cEdit);
     if(!c){toast("找不到這個自訂動作");closeCustomForm();return}
+    const clash=[c.name,name].find(kindClash);
+    if(clash){toast(kindMsg(clash));return}
     const from=c.name;
     if(from!==name)renameEverywhere(from,name);
     c.name=name;c.g=g;c.eq=eq;save();
@@ -933,6 +996,7 @@ $("custom-form").addEventListener("submit",e=>{
     toast(from===name?`已更新「${name}」`:`已改名為「${name}」，紀錄與範本一起更新`);
     return;
   }
+  if(kindClash(name)){toast(kindMsg(name));return}
   const u=usageOf(name);   // re-adding a removed name reattaches its old records
   S.custom.push({name,g,eq,custom:true});save();
   closeCustomForm();refreshExerciseViews();
@@ -950,15 +1014,15 @@ function refreshExerciseViews(){
 }
 function addEx(name){
   if(wEdit&&activeTab()==="history"){if(wEdit.exercises.some(e=>e.name===name)){toast(`這筆紀錄裡已經有${name}`);return}
-    wEdit.exercises.push({name,sets:[{kg:"",reps:""}]});renderWorkoutEdit();toast(`已加入${name}，填上重量與次數`);return}
+    wEdit.exercises.push({name,sets:[copySet(name)]});renderWorkoutEdit();toast(`已加入${name}，填上${cols(name).map(c=>c.what).join("與")}`);return}
   if(editing){if(editing.exercises.some(e=>e.name===name)){toast(`範本裡已經有${name}`);return}
-    editing.exercises.push({name,sets:(lastSetsFor(name)||[0,0,0]).length});renderEdit();toast(`已加入${name}`);return}
+    editing.exercises.push({name,sets:(lastSetsFor(name)||(isCardio(name)?[0]:[0,0,0])).length});renderEdit();toast(`已加入${name}`);return}
   if(!S.draft){toast("先開始一次訓練，才能加入動作");return}
   if(S.draft.exercises.some(e=>e.name===name)){toast(`今天的訓練裡已經有${name}`);return}
   const prev=lastSetsFor(name);
-  const sets=prev?prev.map(s=>({kg:s.kg,reps:s.reps,done:false})):[{kg:"",reps:"",done:false}];
+  const sets=prev?prev.map(s=>({...copySet(name,s),done:false})):[{...copySet(name),done:false}];
   S.draft.exercises.push({name,sets});save();exOpen[name]=true;renderDraft();
-  toast(prev?`已加入${name}，帶入上次的 ${prev.length} 組`:`已加入${name}`);
+  toast(prev?`已加入${name}，帶入上次的${isCardio(name)?"時間與距離":` ${prev.length} 組`}`:`已加入${name}`);
 }
 /* ---------- rest timer ---------- */
 const PRESETS=[45,60,90,120,180,240];
@@ -999,7 +1063,7 @@ function activeSet(){
 // have to refresh it themselves (refreshFocus does)
 function syncRestSub(s=restEnd?Math.max(0,Math.ceil((restEnd-Date.now())/1000)):0){
   const a=activeSet();
-  const nx=a?`下一組：${a.ex.name} 第 ${a.n} 組`:"全部打勾了，可以完成訓練";
+  const nx=!a?"全部打勾了，可以完成訓練":isCardio(a.ex.name)?`下一項：${a.ex.name}${a.ex.sets.length>1?` 第 ${a.n} 段`:""}`:`下一組：${a.ex.name} 第 ${a.n} 組`;
   const sub=!restEnd?"組間休息 · 完成一組後自動倒數":s===0?`休息結束！${nx}`:nx;
   if($("rest-sub").textContent!==sub)$("rest-sub").textContent=sub;
 }
@@ -1152,6 +1216,7 @@ function renderDraft(){
   const actIdx=act?S.draft.exercises.indexOf(act.ex):-1;
   S.draft.exercises.forEach((ex,ei)=>{
     const prev=lastSetsFor(ex.name);
+    const cardio=isCardio(ex.name),cs=cols(ex.name);
     const tb=el("tbody");
     const rows=new Map();
     // One row at a time, so adding or ticking a set only touches that row. Rebuilding the
@@ -1161,12 +1226,13 @@ function renderDraft(){
     // correct. Deleting from the middle would need the renumber() that renderWorkoutEdit has.
     const row=st=>{
       const n=ex.sets.indexOf(st)+1;
-      const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${n} 組重量`,value:st.kg});
-      const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0","aria-label":`第 ${n} 組次數`,value:st.reps});
-      kg.addEventListener("input",()=>{st.kg=kg.value===""?"":+kg.value;save();syncFocus()});
-      rp.addEventListener("input",()=>{st.reps=rp.value===""?"":+rp.value;save();syncFocus()});
+      const ins={};
+      cs.forEach(c=>{
+        const inp=ins[c.k]=el("input",{type:"number",inputmode:c.im,step:c.step,min:"0","aria-label":`第 ${n} 組${c.what}`,value:st[c.k]??""});
+        inp.addEventListener("input",()=>{st[c.k]=inp.value===""?"":+inp.value;save();syncFocus()});
+      });
       const ck=el("button",{type:"button",class:"check","aria-pressed":String(!!st.done),"aria-label":`完成第 ${n} 組`},icon("check",""));
-      const tr=el("tr",{class:st.done?"done":""},el("td",{class:"num hint"},String(n)),el("td",{},kg),el("td",{},rp),el("td",{},ck));
+      const tr=el("tr",{class:st.done?"done":""},el("td",{class:"num hint"},String(n)),...cs.map(c=>el("td",{},ins[c.k])),el("td",{},ck));
       ck.addEventListener("click",()=>{
         st.done=!st.done;
         // strictly increasing, so two taps in the same millisecond still have an order
@@ -1174,15 +1240,17 @@ function renderDraft(){
         else delete st.at;
         save();
         tr.classList.toggle("done",st.done);ck.setAttribute("aria-pressed",String(st.done));
-        if(st.done){primeAudio();startRest(restFor(ex.name))}
+        // a cardio block is usually the last thing done, or a warm-up; no rest follows it
+        if(st.done&&!cardio){primeAudio();startRest(restFor(ex.name))}
+        else if(st.done&&restEnd){stopRest();tick()}   // or the last lift's rest beeps mid-run
         refreshFocus();
       });
-      rows.set(st,{tr,kg,rp,ck});
+      rows.set(st,{tr,ins,ck});
       return tr;
     };
     ex.sets.forEach(st=>tb.append(row(st)));
-    const addBtn=el("button",{type:"button",class:"btn ghost"},icon("plus"),"加一組");
-    const delBtn=el("button",{type:"button",class:"btn ghost",style:"color:var(--muted)"},"刪最後一組");
+    const addBtn=el("button",{type:"button",class:"btn ghost"},icon("plus"),cardio?"加一段":"加一組");
+    const delBtn=el("button",{type:"button",class:"btn ghost",style:"color:var(--muted)"},cardio?"刪最後一段":"刪最後一組");
     const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
     const rsel=el("select",{"aria-label":`${ex.name}的休息時間`,id:`rs-${ei}`},
       el("option",{value:""},`預設（${fmtSec(S.settings.rest)}）`),...[30,45,60,75,90,120,150,180,240,300].map(v=>el("option",{value:String(v)},fmtSec(v))));
@@ -1193,22 +1261,22 @@ function renderDraft(){
     // the next set, in thumb-sized steppers; its values are the row's values
     let fSt=null;
     const fTitle=el("b",{}),fPrev=el("span",{class:"hint"});
-    const fKg=el("output",{class:"num"}),fRp=el("output",{class:"num"});
-    const step=(field,d,min)=>()=>{if(!fSt)return;const r=rows.get(fSt);
-      const v=Math.max(min,Math.round(((+fSt[field]||0)+d)*100)/100);fSt[field]=v;
-      (field==="kg"?r.kg:r.rp).value=v;save();syncFocus()};
-    const stepper=(lbl,out,field,d,min,unit)=>el("div",{class:"stepper"},el("span",{class:"lbl"},lbl),
+    const outs={};cs.forEach(c=>outs[c.k]=el("output",{class:"num"}));
+    const step=(c,d)=>()=>{if(!fSt)return;const r=rows.get(fSt);
+      const v=Math.max(c.lo,Math.round(((+fSt[c.k]||0)+d)*100)/100);fSt[c.k]=v;
+      r.ins[c.k].value=v;save();syncFocus()};
+    const stepper=c=>el("div",{class:"stepper"},el("span",{class:"lbl"},c.lbl),
       el("div",{class:"sbox"},
-        el("button",{type:"button","aria-label":`${unit}減 ${d}`,onclick:step(field,-d,min)},icon("minus")),out,
-        el("button",{type:"button","aria-label":`${unit}加 ${d}`,onclick:step(field,d,min)},icon("plus"))));
+        el("button",{type:"button","aria-label":`${c.what}減 ${c.d}`,onclick:step(c,-c.d)},icon("minus")),outs[c.k],
+        el("button",{type:"button","aria-label":`${c.what}加 ${c.d}`,onclick:step(c,c.d)},icon("plus"))));
     const focus=el("div",{class:"setfocus",hidden:""},
       el("div",{class:"sf-top"},fTitle,fPrev),
-      el("div",{class:"sf-grid"},stepper("公斤",fKg,"kg",2.5,0,"重量"),stepper("次數",fRp,"reps",1,1,"次數")),
+      el("div",{class:"sf-grid"},...cs.map(stepper)),
       el("button",{type:"button",class:"btn primary wide",onclick:()=>{
         if(!fSt)return;const r=rows.get(fSt);r.ck.click();
         const nx=document.querySelector(".setfocus:not([hidden])");
         if(nx&&nx!==focus){const c=nx.closest(".ex");c.classList.remove("collapsed");c.querySelector(".extitle").setAttribute("aria-expanded","true");nx.scrollIntoView({block:"center",behavior:"smooth"})}
-      }},icon("check"),"完成這組，開始休息"));
+      }},icon("check"),cardio?"完成這項有氧":"完成這組，開始休息"));
     const prog=el("span",{class:"exprog"});
     const syncFocus=()=>{
       const d=ex.sets.filter(s=>s.done).length;
@@ -1216,10 +1284,10 @@ function renderDraft(){
       rows.forEach((r,st)=>r.tr.classList.toggle("next",st===fSt));
       if(!fSt){focus.hidden=true;return}
       focus.hidden=false;
-      fTitle.textContent=`第 ${ex.sets.indexOf(fSt)+1} 組`;
+      fTitle.textContent=cardio&&ex.sets.length===1?"這次有氧":`第 ${ex.sets.indexOf(fSt)+1} ${cardio?"段":"組"}`;
       const p=prev&&(prev[ex.sets.indexOf(fSt)]||prev[prev.length-1]);
-      fPrev.textContent=p?`上次 ${p.kg} × ${p.reps}`:"第一次做這個動作";
-      fKg.textContent=kgStr(fSt.kg);fRp.textContent=kgStr(fSt.reps);
+      fPrev.textContent=p?`上次 ${setStr(ex.name,p)}`:"第一次做這個動作";
+      cs.forEach(c=>outs[c.k].textContent=kgStr(fSt[c.k]));
     };
     focusers.push(a=>{fSt=a&&a.ex===ex?a.st:null;syncFocus();
       // the next set moved into a card that is closed only by default: open it so its
@@ -1237,9 +1305,10 @@ function renderDraft(){
         el("button",{type:"button",class:"iconbtn",onclick:()=>{S.draft.exercises.splice(ei,1);save();renderDraft()}},"移除")),
       el("div",{class:"exbody"},
         el("div",{class:"exinfo"},
-          prev?el("span",{class:"pill"},prev.every(s=>s.kg===prev[0].kg&&s.reps===prev[0].reps)?`上次 ${prev.length} 組 · ${prev[0].kg} × ${prev[0].reps}`:"上次 "+prev.map(s=>`${s.kg}×${s.reps}`).join("、")):"",
-          el("label",{class:"exrest"},icon("clock"),"休息",rsel)),
-        el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:30px;text-align:center"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:50px"},""))),tb),
+          !prev?"":cardio?el("span",{class:"pill"},"上次 "+prev.map(s=>setStr(ex.name,s)).join("、"))
+            :el("span",{class:"pill"},prev.every(s=>s.kg===prev[0].kg&&s.reps===prev[0].reps)?`上次 ${prev.length} 組 · ${prev[0].kg} × ${prev[0].reps}`:"上次 "+prev.map(s=>`${s.kg}×${s.reps}`).join("、")),
+          cardio?"":el("label",{class:"exrest"},icon("clock"),"休息",rsel)),
+        el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:30px;text-align:center"},"組"),...cs.map(c=>el("th",{},c.lbl)),el("th",{style:"width:50px"},""))),tb),
         focus,
         el("div",{class:"exfoot"},addBtn,delBtn))
     );
@@ -1249,8 +1318,7 @@ function renderDraft(){
     });
     delBtn.hidden=ex.sets.length<2;   // a property, not an attribute: hidden="false" still hides
     addBtn.addEventListener("click",()=>{
-      const last=ex.sets[ex.sets.length-1]||{kg:"",reps:""};
-      const st={kg:last.kg,reps:last.reps,done:false};
+      const st={...copySet(ex.name,ex.sets[ex.sets.length-1]),done:false};
       ex.sets.push(st);save();
       tb.append(row(st));delBtn.hidden=ex.sets.length<2;
       refreshFocus();
@@ -1274,9 +1342,9 @@ $("discard-yes").addEventListener("click",()=>{S.draft=null;save();$("discard-co
 // that are not ticked yet it asks first; with everything ticked there is nothing to lose
 function finishable(){
   // only ticked rows get saved, so only ticked rows are judged
-  const bad=badSet(S.draft.exercises,st=>st.done&&!blank(st.reps));
+  const bad=badSet(S.draft.exercises,(st,e)=>st.done&&used(e.name,st));   // 5 km ticked without minutes must not vanish
   if(bad){toast(bad);return null}
-  const ex=S.draft.exercises.map(e=>({name:e.name,sets:e.sets.filter(s=>s.done&&+s.reps>0).map(s=>({kg:+s.kg||0,reps:+s.reps}))})).filter(e=>e.sets.length);
+  const ex=S.draft.exercises.map(e=>({name:e.name,sets:e.sets.filter(s=>s.done&&+s[needOf(e.name)]>0).map(s=>cleanSet(e.name,s))})).filter(e=>e.sets.length);
   if(!ex.length){toast("還沒有打勾完成的組。完成一組後按 ✓ 再結束訓練。");return null}
   return ex;
 }
@@ -1299,7 +1367,13 @@ function finishWorkout(){
   S.draft=null;save();closeSheet();stopRest();tick();
   const after=bests();const prs=Object.keys(after).filter(k=>after[k].e>(before[k]?.e||0)+0.01);
   renderDraft();renderSummary();window.scrollTo(0,0);
-  toast(`已儲存：總量 ${fmtK(vol(w))} 公斤`+(prs.length?`，新紀錄：${prs.join("、")}`:""));
+  toast(`已儲存：${totalStr(w)}`+(prs.length?`，新紀錄：${prs.join("、")}`:""));
+}
+// what a saved workout amounts to, for the toasts: lifting volume, cardio time, or both
+function totalStr(w){
+  const c=cardioOf(w),v=vol(w);
+  const cd=c.min?`有氧 ${c.min} 分鐘${c.km?`（${r1s(c.km)} 公里）`:""}`:"";
+  return kgFirst(v,c.min)?`總量 ${fmtK(v)} 公斤${cd?"、"+cd:""}`:cd;
 }
 
 /* ---------- routines ---------- */
@@ -1333,7 +1407,7 @@ function renderRoutines(){
       plates(r.exercises,34)),
     el("ul",{},...r.exercises.map(e=>{const p=lastSetsFor(e.name);
       return el("li",{},el("span",{class:"dot","data-g":G(e.name)}),el("span",{class:"nm"},e.name),
-        el("span",{class:"num"},p&&p[0]?`${e.sets} × ${p[0].reps} · ${p[0].kg}`:`${e.sets} 組`))})),
+        el("span",{class:"num"},p&&p[0]?(isCardio(e.name)?(e.sets>1?`${e.sets} 段 · `:"")+setStr(e.name,p[0]):`${e.sets} × ${p[0].reps} · ${p[0].kg}`):isCardio(e.name)?"有氧":`${e.sets} 組`))})),
     el("div",{class:"acts"},
       el("button",{type:"button",class:"iconbtn","aria-label":`編輯「${r.name}」範本`,onclick:()=>openEdit(r)},icon("edit")),
       el("button",{type:"button",class:"btn primary",onclick:()=>startRoutine(r)},"開始訓練",el("span",{class:"go"},icon("arrow"))))));
@@ -1348,10 +1422,11 @@ function renderRoutines(){
 function startRoutine(r){
   S.draft={date:ymd(new Date()),routine:r.id,name:r.name,exercises:r.exercises.map(e=>{
     const prev=lastSetsFor(e.name);const sets=[];
-    for(let k=0;k<e.sets;k++){const p=prev?(prev[k]||prev[prev.length-1]):null;sets.push({kg:p?p.kg:"",reps:p?p.reps:"",done:false})}
+    for(let k=0;k<e.sets;k++){const p=prev?(prev[k]||prev[prev.length-1]):null;sets.push({...copySet(e.name,p),done:false})}
     return{name:e.name,sets}})};
   exOpen={};
-  save();renderDraft();window.scrollTo(0,0);toast(`開始「${r.name}」，已帶入上次的重量`);
+  const k=new Set(r.exercises.map(e=>isCardio(e.name)));
+  save();renderDraft();window.scrollTo(0,0);toast(`開始「${r.name}」，已帶入上次的${k.size>1?"重量與有氧時間":k.has(true)?"時間與距離":"重量"}`);
 }
 function openEdit(r){
   editing=r?{id:r.id,name:r.name,exercises:r.exercises.map(e=>({...e}))}:{id:null,name:"",exercises:[]};
@@ -1369,7 +1444,7 @@ function renderEdit(){
     n.addEventListener("change",()=>{e.sets=Math.max(1,Math.min(10,Math.round(+n.value)||1));n.value=e.sets});
     const mv=d=>{const j=i+d;if(j<0||j>=editing.exercises.length)return;[editing.exercises[i],editing.exercises[j]]=[editing.exercises[j],editing.exercises[i]];renderEdit()};
     ol.append(el("li",{},el("span",{class:"dot","data-g":G(e.name)}),el("span",{class:"nm"},e.name),
-      el("label",{class:"row hint",style:"gap:4px"},n,"組"),
+      el("label",{class:"row hint",style:"gap:4px"},n,isCardio(e.name)?"段":"組"),
       el("span",{class:"ord"},
         el("button",{type:"button",class:"iconbtn","aria-label":`${e.name}上移`,onclick:()=>mv(-1)},"↑"),
         el("button",{type:"button",class:"iconbtn","aria-label":`${e.name}下移`,onclick:()=>mv(1)},"↓"),
@@ -1404,11 +1479,17 @@ $("save-routine").addEventListener("click",()=>{
 function prWorkouts(){
   const best={},ids=new Set();
   [...S.workouts].reverse().forEach(w=>w.exercises.forEach(e=>{
+    if(isCardio(e.name))return;
     const v=Math.max(0,...e.sets.map(s=>e1rm(+s.kg||0,+s.reps||0)));
     if(best[e.name]!==undefined&&v>best[e.name]+0.01)ids.add(w.id);
     if(best[e.name]===undefined||v>best[e.name])best[e.name]=v;
   }));
   return ids;
+}
+// a week header: kilograms when there was lifting, cardio minutes when there was cardio
+function weekStr(ws){
+  const v=ws.reduce((a,w)=>a+vol(w),0),m=r1(ws.reduce((a,w)=>a+cardioOf(w).min,0));
+  return [`${ws.length} 次`,kgFirst(v,m)?`${fmtK(v)} 公斤`:"",m?`有氧 ${m} 分`:""].filter(Boolean).join(" · ");
 }
 function renderHistory(){
   $("hist-head").hidden=!!wEdit;
@@ -1428,20 +1509,23 @@ function renderHistory(){
     const label=weeksAgo===0?"本週":weeksAgo===1?"上週":`${weeksAgo} 週前`;
     h.append(el("section",{class:"hgroup","aria-label":label},
       el("div",{class:"hghead"},el("span",{},label+" ",el("span",{class:"hint"},`${md(g.m)} – ${md(sun)}`)),
-        el("span",{class:"hint"},`${g.items.length} 次 · ${fmtK(g.items.reduce((a,w)=>a+vol(w),0))} 公斤`)),
+        el("span",{class:"hint"},weekStr(g.items))),
       el("div",{class:"hcard"},...g.items.map(w=>{
         const d=parse(w.date);
-        const summary=w.exercises.map(e=>`${e.name} ${e.sets.length}組`).join(" · ");
+        const cd=cardioOf(w),v=vol(w);
+        const summary=w.exercises.map(e=>isCardio(e.name)?`${e.name} ${r1(e.sets.reduce((a,s)=>a+(+s.min||0),0))}分鐘`:`${e.name} ${e.sets.length}組`).join(" · ");
         const r=S.routines.find(x=>x.id===w.routine);
-        const nsets=w.exercises.reduce((a,e)=>a+e.sets.length,0);
+        const nsets=w.exercises.reduce((a,e)=>a+(isCardio(e.name)?0:e.sets.length),0);
+        // a cardio-only day has no volume to show, so its card leads with the minutes instead
+        const big=kgFirst(v,cd.min)?[fmtK(v),"公斤"]:[String(cd.min),"分鐘"];
         return el("button",{type:"button",class:"hitem",onclick:()=>openWorkout(w),
-          "aria-label":`修改 ${d.getMonth()+1} 月 ${d.getDate()} 日的訓練：${summary}，總量 ${fmtK(vol(w))} 公斤`},
+          "aria-label":`修改 ${d.getMonth()+1} 月 ${d.getDate()} 日的訓練：${summary}，${totalStr(w)}`},
           el("span",{class:"hdate"},el("b",{},String(d.getDate())),el("span",{},`週${WD[d.getDay()]}`)),
           el("span",{class:"hmeta"},
             el("span",{class:"hname"},el("span",{},r?r.name:w.exercises.map(e=>e.name).join("、")),prs.has(w.id)?el("span",{class:"prtag"},"新紀錄"):""),
             el("span",{class:"hsub"},el("span",{class:"dots"},...w.exercises.map(e=>el("span",{class:"dot","data-g":G(e.name),title:e.name}))),
-              `${w.exercises.length} 個動作 · ${nsets} 組`)),
-          el("span",{class:"hvol"},el("span",{class:"num"},fmtK(vol(w))),el("span",{class:"hint"},"公斤")),
+              [`${w.exercises.length} 個動作`,nsets?`${nsets} 組`:"",cd.min?`有氧 ${cd.min} 分`:""].filter(Boolean).join(" · "))),
+          el("span",{class:"hvol"},el("span",{class:"num"},big[0]),el("span",{class:"hint"},big[1])),
           icon("chev","ico hchev"));
       }))));
   });
@@ -1449,13 +1533,18 @@ function renderHistory(){
 
 // the number inputs carry min="0" but nothing ever submits these forms, so the
 // attribute is decorative — negative weight would quietly shrink every volume total
-const blank=v=>v===""||v==null;
 function badSet(list,counts){
-  for(const e of list)for(const st of e.sets){
-    if(!counts(st))continue;          // a row left blank is simply not saved
-    const kg=+st.kg,reps=+st.reps;
-    if(!(reps>0)||reps>999)return `「${e.name}」的次數要填 1 到 999 之間的數字。`;
-    if(!blank(st.kg)&&(kg<0||kg>1000))return `「${e.name}」的重量要填 0 到 1000 之間的數字。`;
+  for(const e of list){
+    // the required field is judged first, so its message wins when both are off
+    const cs=[...cols(e.name)].sort((a,b)=>!!b.need-!!a.need);
+    for(const st of e.sets){
+      if(!counts(st,e))continue;          // a row left blank is simply not saved
+      for(const c of cs){
+        const v=+st[c.k];
+        if(c.need&&(!(v>0)||v<c.lo||v>c.max))return `「${e.name}」的${c.what}要填 ${c.lo} 到 ${c.max} 之間的數字。`;
+        if(!c.need&&!blank(st[c.k])&&(!(v>=0)||v>c.max))return `「${e.name}」的${c.what}要填 0 到 ${c.max} 之間的數字。`;
+      }
+    }
   }
   return null;
 }
@@ -1478,21 +1567,22 @@ function renderWorkoutEdit(){
   if(!wEdit.exercises.length)list.append(el("div",{class:"panel empty"},"這筆紀錄裡沒有動作了。按「加入動作」補上，或按「刪除這筆」整筆移除。"));
   wEdit.exercises.forEach((ex,ei)=>{
     const tb=el("tbody");
+    const cs=cols(ex.name);
     // same reason as the draft: a rebuild would drop the field being typed into
     const renumber=()=>[...tb.children].forEach((tr,i)=>{
       tr.firstElementChild.textContent=String(i+1);
-      const [a,b]=tr.querySelectorAll("input");
-      a.setAttribute("aria-label",`第 ${i+1} 組重量`);b.setAttribute("aria-label",`第 ${i+1} 組次數`);
+      tr.querySelectorAll("input").forEach((inp,j)=>inp.setAttribute("aria-label",`第 ${i+1} 組${cs[j].what}`));
       tr.querySelector("button").setAttribute("aria-label",`刪除第 ${i+1} 組`);
     });
     const row=st=>{
       const n=ex.sets.indexOf(st)+1;
-      const kg=el("input",{type:"number",inputmode:"decimal",step:"0.25",min:"0","aria-label":`第 ${n} 組重量`,value:st.kg});
-      const rp=el("input",{type:"number",inputmode:"numeric",step:"1",min:"0","aria-label":`第 ${n} 組次數`,value:st.reps});
-      kg.addEventListener("input",()=>{st.kg=kg.value===""?"":+kg.value});
-      rp.addEventListener("input",()=>{st.reps=rp.value===""?"":+rp.value});
+      const ins=cs.map(c=>{
+        const inp=el("input",{type:"number",inputmode:c.im,step:c.step,min:"0","aria-label":`第 ${n} 組${c.what}`,value:st[c.k]??""});
+        inp.addEventListener("input",()=>{st[c.k]=inp.value===""?"":+inp.value});
+        return inp;
+      });
       const x=el("button",{type:"button",class:"iconbtn","aria-label":`刪除第 ${n} 組`},"✕");
-      const tr=el("tr",{},el("td",{class:"num hint"},String(n)),el("td",{},kg),el("td",{},rp),el("td",{},x));
+      const tr=el("tr",{},el("td",{class:"num hint"},String(n)),...ins.map(i=>el("td",{},i)),el("td",{},x));
       x.addEventListener("click",()=>{
         const i=ex.sets.indexOf(st);        // by identity: earlier rows may already be gone
         if(i>=0)ex.sets.splice(i,1);
@@ -1501,17 +1591,16 @@ function renderWorkoutEdit(){
       return tr;
     };
     ex.sets.forEach(st=>tb.append(row(st)));
-    const wAdd=el("button",{type:"button",class:"btn ghost"},icon("plus"),"加一組");
+    const wAdd=el("button",{type:"button",class:"btn ghost"},icon("plus"),isCardio(ex.name)?"加一段":"加一組");
     const meta=allEx().find(e=>e.name===ex.name)||{g:"其他",eq:""};
     list.append(el("div",{class:"panel ex","data-g":meta.g},
       el("div",{class:"exhead"},el("span",{class:"plate","data-g":meta.g,"aria-hidden":"true"}),
         el("div",{class:"extitle"},el("h3",{},ex.name),el("span",{class:"tag"},`${meta.g}${meta.eq?" · "+meta.eq:""}`)),
         el("button",{type:"button",class:"iconbtn",onclick:()=>{wEdit.exercises.splice(ei,1);renderWorkoutEdit()}},"移除")),
-      el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:30px;text-align:center"},"組"),el("th",{},"公斤"),el("th",{},"次數"),el("th",{style:"width:50px"},""))),tb),
+      el("table",{class:"sets"},el("thead",{},el("tr",{},el("th",{style:"width:30px;text-align:center"},"組"),...cs.map(c=>el("th",{},c.lbl)),el("th",{style:"width:50px"},""))),tb),
       el("div",{class:"exfoot"},wAdd)));
     wAdd.addEventListener("click",()=>{
-      const last=ex.sets[ex.sets.length-1]||{kg:"",reps:""};
-      const st={kg:last.kg,reps:last.reps};
+      const st=copySet(ex.name,ex.sets[ex.sets.length-1]);
       ex.sets.push(st);tb.append(row(st));
     });
   });
@@ -1525,17 +1614,18 @@ $("w-date").addEventListener("change",()=>{
 });
 $("w-cancel").addEventListener("click",()=>{closeWorkout();toast("已取消，紀錄沒有變動")});
 $("w-save").addEventListener("click",()=>{
-  const bad=badSet(wEdit.exercises,st=>!blank(st.reps));   // blank rows are dropped, not judged
+  const bad=badSet(wEdit.exercises,(st,e)=>!blank(st[needOf(e.name)]));   // clearing reps or minutes is how a row is dropped here
   if(bad){toast(bad);return}
-  const ex=wEdit.exercises.map(e=>({name:e.name,sets:e.sets.filter(st=>+st.reps>0).map(st=>({kg:+st.kg||0,reps:+st.reps}))})).filter(e=>e.sets.length);
-  const empty=wEdit.exercises.find(e=>!e.sets.some(st=>+st.reps>0));
-  if(empty){toast(`「${empty.name}」沒有任何一組填了次數。要拿掉這個動作請按它的「移除」。`);return}
+  const filled=(e,st)=>+st[needOf(e.name)]>0;
+  const ex=wEdit.exercises.map(e=>({name:e.name,sets:e.sets.filter(st=>filled(e,st)).map(st=>cleanSet(e.name,st))})).filter(e=>e.sets.length);
+  const empty=wEdit.exercises.find(e=>!e.sets.some(st=>filled(e,st)));
+  if(empty){toast(`「${empty.name}」沒有任何一組填了${needCol(empty.name).what}。要拿掉這個動作請按它的「移除」。`);return}
   if(!ex.length){toast("這筆紀錄沒有東西可以存。要整筆移除請按「刪除這筆」。");return}
   const i=S.workouts.findIndex(w=>w.id===wEdit.id);
   if(i<0){toast("找不到這筆紀錄，可能已經被刪掉了");closeWorkout();return}
   const w={...S.workouts[i],date:wEdit.date,exercises:ex};
   S.workouts[i]=w;S.workouts.sort((a,b)=>b.date.localeCompare(a.date));save();
-  closeWorkout();toast(`已更新：總量 ${fmtK(vol(w))} 公斤`);
+  closeWorkout();toast(`已更新：${totalStr(w)}`);
 });
 $("w-delete").addEventListener("click",()=>$("w-del-confirm").hidden=false);
 $("w-del-no").addEventListener("click",()=>$("w-del-confirm").hidden=true);
@@ -1547,24 +1637,40 @@ $("w-del-yes").addEventListener("click",()=>{
 });
 
 /* ---------- progress ---------- */
-function bests(){const b={};S.workouts.forEach(w=>w.exercises.forEach(e=>e.sets.forEach(s=>{const v=e1rm(s.kg,s.reps);if(!b[e.name]||v>b[e.name].e||(v===b[e.name].e&&w.date>b[e.name].date))b[e.name]={e:v,kg:s.kg,reps:s.reps,date:w.date}})));return b}
+function bests(){const b={};S.workouts.forEach(w=>w.exercises.forEach(e=>!isCardio(e.name)&&e.sets.forEach(s=>{const v=e1rm(s.kg,s.reps);if(!b[e.name]||v>b[e.name].e||(v===b[e.name].e&&w.date>b[e.name].date))b[e.name]={e:v,kg:s.kg,reps:s.reps,date:w.date}})));return b}
 const NS="http://www.w3.org/2000/svg";
 const sv=(t,a,txt)=>{const n=document.createElementNS(NS,t);for(const k in a)n.setAttribute(k,a[k]);if(txt!=null)n.textContent=txt;return n};
 function niceMax(v){if(v<=0)return 1;const p=10**Math.floor(Math.log10(v));const m=v/p;return(m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p}
 function axes(svg,W,H,L,B,T,max,min,fmt){
   for(let i=0;i<=4;i++){const v=min+(max-min)*i/4;const y=H-B-(H-B-T)*i/4;svg.append(sv("line",{x1:L,x2:W-6,y1:y,y2:y,class:"grid"}));svg.append(sv("text",{x:L-6,y:y+3,"text-anchor":"end"},fmt(v)))}
 }
-function renderVol(){
-  const svg=$("c-vol");svg.replaceChildren();const W=340,H=170,L=40,B=22,T=10;
+// the last 8 weeks as bars, this week highlighted; returns the weekly totals, oldest first
+function weekBars(svg,valOf,fmt){
+  svg.replaceChildren();const W=340,H=170,L=40,B=22,T=10;
   const m0=monday(new Date());const wk=[];for(let i=7;i>=0;i--){const d=new Date(m0);d.setDate(d.getDate()-7*i);wk.push({k:ymd(d),d,v:0})}
-  S.workouts.forEach(w=>{const k=ymd(monday(parse(w.date)));const o=wk.find(x=>x.k===k);if(o)o.v+=vol(w)});
-  const max=niceMax(Math.max(...wk.map(x=>x.v)));axes(svg,W,H,L,B,T,max,0,v=>fmtK(v));
+  S.workouts.forEach(w=>{const k=ymd(monday(parse(w.date)));const o=wk.find(x=>x.k===k);if(o)o.v+=valOf(w)});
+  const max=niceMax(Math.max(...wk.map(x=>x.v)));axes(svg,W,H,L,B,T,max,0,fmt);
   const bw=(W-L-6)/wk.length;
   wk.forEach((x,i)=>{const h=(H-B-T)*x.v/max;const cur=i===wk.length-1;
     svg.append(sv("rect",{x:L+i*bw+bw*0.2,y:H-B-h,width:bw*0.6,height:Math.max(h,0),rx:4,fill:cur?"var(--fg)":"var(--bar)"}));
     svg.append(sv("text",{x:L+i*bw+bw/2,y:H-6,"text-anchor":"middle",style:cur?"fill:var(--fg);font-weight:600":""},md(x.d)))});
+  return wk;
+}
+function renderVol(){
+  const wk=weekBars($("c-vol"),vol,v=>fmtK(v));
   $("v-now").textContent=fmtK(wk[7].v);
   $("v-prev").textContent=`上週 ${fmtK(wk[6].v)}`;
+}
+// only shown once some cardio has been logged, so a lifting-only log is not cluttered
+function renderCardio(){
+  const any=S.workouts.some(w=>cardioOf(w).min>0);
+  $("cardio-panel").hidden=!any;if(!any)return;
+  const wk=weekBars($("c-cardio"),w=>cardioOf(w).min,r1s);
+  const m0=ymd(monday(new Date()));
+  const km=S.workouts.filter(w=>ymd(monday(parse(w.date)))===m0).reduce((a,w)=>a+cardioOf(w).km,0);
+  $("cd-now").textContent=String(r1(wk[7].v));
+  $("cd-km").textContent=km?`本週 ${r1s(km)} 公里`:"";
+  $("cd-prev").textContent=`上週 ${r1(wk[6].v)} 分鐘`;
 }
 function line(svg,pts,W,H,L,B,T,fmt,color){
   svg.replaceChildren();
@@ -1591,7 +1697,7 @@ function render1rm(){
 }
 let prsAll=false;
 function renderProgress(){
-  renderVol();
+  renderVol();renderCardio();
   const b=bests();const names=Object.keys(b).filter(n=>b[n].e>0);
   const sel=$("ex-sel");const cur=sel.value;sel.replaceChildren(...names.map(n=>el("option",{value:n},n)));
   if(names.includes(cur))sel.value=cur;
@@ -1710,6 +1816,6 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 </script>
-<!-- LiftSync v1.2.1 -->
+<!-- LiftSync v1.3.0 -->
 </body>
 </html>
